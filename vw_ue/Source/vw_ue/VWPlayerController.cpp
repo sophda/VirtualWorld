@@ -85,9 +85,15 @@ void AVWPlayerController::PrimaryReleased()
 void AVWPlayerController::OrderAtCursor()
 {
  if (!bStrategicMode || !bMilitaryLayer) return;
- auto* HUD = Cast<AVWHUD>(GetHUD()); float X, Y; FIntPoint Cell;
- if (HUD && GetMousePosition(X,Y) && HUD->CellAt(FVector2D(X,Y), Cell))
- { SelectedCell = Cell; Submit(EVWCommandType::MoveUnit); }
+ auto* HUD = Cast<AVWHUD>(GetHUD()); float X,Y; FVector Destination;
+ auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
+ if (HUD && Domain && GetMousePosition(X,Y) && HUD->WorldAt(FVector2D(X,Y),Destination))
+ {
+  SelectedCell = FIntPoint(FMath::RoundToInt(Destination.X/1000),FMath::RoundToInt(Destination.Y/1000));
+  FVWCommand Command; Command.Type=EVWCommandType::MoveUnit; Command.Issuer=Domain->GetPlayerSubjectId();
+  Command.Cell=SelectedCell; Command.Units=SelectedUnits; Command.bWorldDestination=true; Command.Destination=Destination;
+  bFeedbackSuccess=Domain->ExecuteCommand(Command,Feedback);
+ }
 }
 void AVWPlayerController::Work() { Submit(EVWCommandType::Work); }
 void AVWPlayerController::BuyRifle() { Submit(EVWCommandType::BuyRifle); }

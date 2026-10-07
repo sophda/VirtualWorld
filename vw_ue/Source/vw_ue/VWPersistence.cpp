@@ -1,5 +1,6 @@
 #include "VWDomainWorldSubsystem.h"
 #include "VWWorldSave.h"
+#include "VWNavigation.h"
 #include "Kismet/GameplayStatics.h"
 
 bool UVWDomainWorldSubsystem::ValidateSnapshot(const FVWWorldSnapshot& S, FString& Error)
@@ -43,6 +44,15 @@ bool UVWDomainWorldSubsystem::ValidateSnapshot(const FVWWorldSnapshot& S, FStrin
       !S.Cells.Contains(U.Cell) || !S.Cells.Contains(U.Target) ||
       (!(U.Owner == S.PlayerId) && !(S.NationId.IsValid() && U.Owner == S.NationId)))
    return Fail(TEXT("Invalid military unit."));
+  if (U.bContinuousPosition)
+  {
+   if (U.Position.ContainsNaN() || U.Destination.ContainsNaN() || U.Waypoints.Num()>512 ||
+       FMath::Abs(U.Position.X)>5300 || FMath::Abs(U.Position.Y)>5300 ||
+       FMath::Abs(U.Destination.X)>5300 || FMath::Abs(U.Destination.Y)>5300)
+    return Fail(TEXT("Invalid continuous squad position."));
+   for (const auto& P : U.Waypoints) if (P.ContainsNaN() || FMath::Abs(P.X)>5300 || FMath::Abs(P.Y)>5300)
+    return Fail(TEXT("Invalid squad path."));
+  }
   Ids.Add(U.Id);
  }
  if (!FMath::IsFinite(S.Health) || S.Health <= 0 || S.Health > 100 || S.CharacterLocation.ContainsNaN() ||
@@ -60,7 +70,18 @@ bool UVWDomainWorldSubsystem::RestoreSnapshot(const FVWWorldSnapshot& Snapshot, 
 {
  if (!HasAuthority()) { Error = TEXT("Only standalone authority can restore a snapshot."); return false; }
  if (!ValidateSnapshot(Snapshot, Error)) return false;
- State = Snapshot; LastShotTime = -1.0; return true;
+ State = Snapshot;
+ for (auto& Unit : State.Units)
+ {
+  if (!Unit.bContinuousPosition)
+  {
+   Unit.Position = FVector(Unit.Cell.X*1000-300,Unit.Cell.Y*1000-80,-5);
+   Unit.Destination = FVector(Unit.Target.X*1000,Unit.Target.Y*1000,-5);
+   Unit.bContinuousPosition = true;
+  }
+  if (Unit.bMoving) Unit.bMoving = VWNavigation::BuildPath(Unit.Position,Unit.Destination,NavigationObstacles,Unit.Waypoints);
+ }
+ LastShotTime = -1.0; return true;
 }
 bool UVWDomainWorldSubsystem::SaveSnapshot(FString& Message)
 {

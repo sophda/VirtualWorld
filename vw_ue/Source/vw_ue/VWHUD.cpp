@@ -63,7 +63,7 @@ void AVWHUD::DrawHUD()
  DrawRect(FLinearColor(0.025f,0.045f,0.07f,0.97f),0,100,W,H-165);
  DrawRect(FLinearColor(0.04f,0.075f,0.10f),16,112,292,H-188);
  DrawText(TEXT("COMMAND CENTER"),Accent,28,124);
- DrawText(FString::Printf(TEXT("CONTROL %d cells | %d squads"),Domain->ControlledCellCount(),S.Units.Num()),Ink,28,152,nullptr,0.9f);
+ DrawText(FString::Printf(TEXT("CONTROL %d areas | %d squads"),Domain->ControlledCellCount(),S.Units.Num()),Ink,28,152,nullptr,0.9f);
  DrawText(FString::Printf(TEXT("IRON %d   COAL %d   STEEL %d"),S.Iron,S.Coal,S.Steel),Muted,28,175,nullptr,0.85f);
  DrawText(FString::Printf(TEXT("GDP $%.2f | TAX $%.2f / day"),S.GDP/100.0,S.LastTax/100.0),Muted,28,198,nullptr,0.85f);
  DrawText(S.bPresident ? TEXT("OFFICE: PRESIDENT") : TEXT("OFFICE: NONE"),S.bPresident ? Accent : Muted,28,221,nullptr,0.8f);
@@ -80,58 +80,72 @@ void AVWHUD::DrawHUD()
  Button(PC->bMilitaryLayer ? TEXT("Military ON") : TEXT("Military OFF"),164,474,128,-2);
  Button(PC->bTerritoryLayer ? TEXT("Control ON") : TEXT("Control OFF"),28,505,128,-3);
  Button(TEXT("Load F9"),164,505,128,static_cast<int32>(EVWCommandType::Load));
- DrawText(TEXT("LMB cell/squad | Drag to select squads"),Muted,330,114,nullptr,0.85f);
- DrawText(TEXT("RMB move/capture | Green yours | Red tribe"),Muted,330,137,nullptr,0.85f);
- CellSize = FMath::Max(8.f, FMath::Min((W-365.f)/11.f,(H-285.f)/11.f));
+ DrawText(TEXT("LMB select location/squad | Drag to select squads"),Muted,330,114,nullptr,0.85f);
+ DrawText(TEXT("RMB move anywhere / capture | Routes avoid obstacles"),Muted,330,137,nullptr,0.85f);
+ CellSize = FMath::Max(8.f, FMath::Min((W-365.f)/11.f,(H-200.f)/11.f));
  MapOrigin = FVector2D(330,165);
- for (const auto& Pair : S.Cells)
+ const float MapWidth=CellSize*11;
+ DrawRect(FLinearColor(0.08f,0.15f,0.13f),MapOrigin.X,MapOrigin.Y,MapWidth,MapWidth);
+ // Continuous terrain presentation: no tile outlines or snapped unit markers.
+ if (PC->bTerritoryLayer)
+ for (const auto& Pair:S.Cells)
  {
-  const auto& C = Pair.Value; FVector2D P = CellCenter(C.Coordinate) - FVector2D(CellSize/2,CellSize/2);
-  FLinearColor Color(0.075f,0.12f,0.16f);
-  if (PC->bTerritoryLayer && Domain->OwnsCell(C)) Color = FLinearColor(0.07f,0.25f,0.24f);
-  else if (PC->bTerritoryLayer && C.ControlledBy.IsValid()) Color = FLinearColor(0.30f,0.11f,0.14f);
-  DrawRect(Color,P.X+1,P.Y+1,CellSize-2,CellSize-2);
-  if (PC->bResourcesLayer && C.bSurveyed && C.Resource != EVWResource::None)
-   DrawText(C.Resource == EVWResource::Iron ? TEXT("Fe") : TEXT("C"),Amber,P.X+3,P.Y+3,nullptr,0.7f);
-  if (C.bRoad) DrawLine(P.X,P.Y+CellSize*0.72f,P.X+CellSize,P.Y+CellSize*0.72f,Muted,2);
-  if (C.Facility != EVWFacility::None)
+  const auto& C=Pair.Value;
+  if (Domain->OwnsCell(C))
+   Disc(CellCenter(C.Coordinate),CellSize*0.64f,FLinearColor(0.09f,0.22f,0.18f));
+  else if (C.Defenders>0)
+   Disc(CellCenter(C.Coordinate),CellSize*0.65f,FLinearColor(0.28f,0.13f,0.12f));
+ }
+ for (const auto& Box:Domain->GetNavigationObstacles())
+ {
+  const FVector2D A=MapPoint(FVector(Box.Min.X,Box.Max.Y,0));
+  const FVector2D B=MapPoint(FVector(Box.Max.X,Box.Min.Y,0));
+  DrawRect(FLinearColor(0.30f,0.34f,0.33f),A.X,A.Y,B.X-A.X,B.Y-A.Y);
+ }
+ for (const auto& Pair:S.Cells)
+ {
+  const auto& C=Pair.Value;
+  const FVector2D P=CellCenter(C.Coordinate);
+  if (PC->bResourcesLayer && C.bSurveyed && C.Resource!=EVWResource::None)
   {
-   const TCHAR* Label = C.Facility == EVWFacility::Mine ? TEXT("MINE") : C.Facility == EVWFacility::Steelworks ? TEXT("STEEL") : TEXT("FACT");
-   DrawText(Label,Ink,P.X+3,P.Y+CellSize-15,nullptr,0.6f);
+   Disc(P,5,Amber);
+   DrawText(C.Resource==EVWResource::Iron?TEXT("Fe"):TEXT("Coal"),Amber,P.X+7,P.Y-5,nullptr,0.7f);
   }
-  if (!C.Settlement.IsEmpty()) DrawText(C.Coordinate == FIntPoint(2,0) ? TEXT("TRIBE") : TEXT("TOWN"),Muted,P.X+3,P.Y+CellSize*0.35f,nullptr,0.6f);
-  if (PC->bTerritoryLayer && Domain->OwnsCell(C))
+  if (!C.Settlement.IsEmpty())
+   DrawText(C.Defenders>0?TEXT("TRIBE"):TEXT("TOWN"),Muted,P.X+7,P.Y+8,nullptr,0.65f);
+  if (C.Facility!=EVWFacility::None)
+   DrawText(C.Facility==EVWFacility::Mine?TEXT("MINE"):C.Facility==EVWFacility::Steelworks?TEXT("STEEL"):TEXT("FACTORY"),Ink,P.X+6,P.Y+17,nullptr,0.65f);
+  if (C.bRoad)
+  for (const FIntPoint Offset:{FIntPoint(1,0),FIntPoint(0,1)})
   {
-   const auto* N = S.Cells.Find(C.Coordinate+FIntPoint(1,0));
-   if (N && N->ControlledBy.IsValid() && !Domain->OwnsCell(*N))
-    DrawLine(P.X+CellSize,P.Y,P.X+CellSize,P.Y+CellSize,Amber,3);
-   N = S.Cells.Find(C.Coordinate+FIntPoint(0,1));
-   if (N && N->ControlledBy.IsValid() && !Domain->OwnsCell(*N))
-    DrawLine(P.X,P.Y,P.X+CellSize,P.Y,Amber,3);
-  }
-  if (C.bDisputed && PC->bTerritoryLayer)
-   for (float D=0; D<CellSize; D+=10) DrawLine(P.X+D,P.Y,P.X+FMath::Min(D+5,CellSize),P.Y,Amber,3);
-  if (C.Coordinate == PC->GetSelectedCell())
-  {
-   DrawLine(P.X,P.Y,P.X+CellSize,P.Y,Accent,2);
-   DrawLine(P.X,P.Y,P.X,P.Y+CellSize,Accent,2);
-   DrawLine(P.X+CellSize,P.Y,P.X+CellSize,P.Y+CellSize,Accent,2);
-   DrawLine(P.X,P.Y+CellSize,P.X+CellSize,P.Y+CellSize,Accent,2);
+   const auto* Neighbor=S.Cells.Find(C.Coordinate+Offset);
+   if (Neighbor && Neighbor->bRoad) { const FVector2D Q=CellCenter(Neighbor->Coordinate); DrawLine(P.X,P.Y,Q.X,Q.Y,Muted,2); }
   }
  }
+ Disc(CellCenter(PC->GetSelectedCell()),4,Accent);
  if (PC->bMilitaryLayer)
- for (const auto& Unit : S.Units)
+ for (const auto& Unit:S.Units)
  {
-  const FVector2D P = CellCenter(Unit.Cell);
-  const bool Selected = PC->GetSelectedUnits().Contains(Unit.Id);
-  if (Unit.bMoving) { const FVector2D T = CellCenter(Unit.Target); DrawLine(P.X,P.Y,T.X,T.Y,Selected ? Accent : Muted,1); }
-  DrawRect(Selected ? Accent : Ink,P.X-6,P.Y-6,12,12);
-  DrawText(FString::Printf(TEXT("%d"),Unit.Soldiers),Ink,P.X+8,P.Y-8,nullptr,0.7f);
+  const FVector2D P=MapPoint(Unit.Position);
+  const bool Selected=PC->GetSelectedUnits().Contains(Unit.Id);
+  if (Unit.bMoving)
+  {
+   FVector2D Previous=P;
+   for (const auto& Waypoint:Unit.Waypoints)
+   {
+    const FVector2D Next=MapPoint(Waypoint);
+    DrawLine(Previous.X,Previous.Y,Next.X,Next.Y,Selected?Accent:Muted,1.5f);
+    Previous=Next;
+   }
+   Disc(MapPoint(Unit.Destination),3,Selected?Accent:Muted);
+  }
+  Disc(P,Selected?7.f:5.f,Selected?Accent:Ink);
+  DrawText(FString::Printf(TEXT("%s (%d)"),*Unit.Name,Unit.Soldiers),Ink,P.X+9,P.Y-7,nullptr,0.7f);
  }
  const auto* Selected = S.Cells.Find(PC->GetSelectedCell());
  if (Selected)
  {
-  DrawText(FString::Printf(TEXT("CELL (%d,%d)  |  %s  |  %s"),
+  DrawText(FString::Printf(TEXT("AREA (%d,%d)  |  %s  |  %s"),
    Selected->Coordinate.X,Selected->Coordinate.Y,Domain->OwnsCell(*Selected) ? TEXT("CONTROLLED") : TEXT("OUTSIDE CONTROL"),
    *Selected->Settlement),Ink,330,H-103,nullptr,0.85f);
   const TCHAR* Resource = !Selected->bSurveyed ? TEXT("Unsurveyed") : Selected->Resource == EVWResource::Iron ? TEXT("Iron") : Selected->Resource == EVWResource::Coal ? TEXT("Coal") : TEXT("No deposit");
@@ -177,6 +191,26 @@ void AVWHUD::PointerReleased()
  FBox2D Bounds(FVector2D(FMath::Min(End.X,DragStart.X),FMath::Min(End.Y,DragStart.Y)),
                FVector2D(FMath::Max(End.X,DragStart.X),FMath::Max(End.Y,DragStart.Y)));
  for (const auto& Unit : Domain->GetSnapshot().Units)
-  if (Box ? Bounds.IsInside(CellCenter(Unit.Cell)) : Unit.Cell == PC->GetSelectedCell()) Selection.Add(Unit.Id);
+  if (Box ? Bounds.IsInside(MapPoint(Unit.Position)) : FVector2D::Distance(MapPoint(Unit.Position),End)<14.f) Selection.Add(Unit.Id);
  PC->SelectUnits(Selection);
+}
+
+FVector2D AVWHUD::MapPoint(const FVector& Position) const
+{
+ return MapOrigin+FVector2D(Position.X/1000+5.5,5.5-Position.Y/1000)*CellSize;
+}
+bool AVWHUD::WorldAt(FVector2D Point,FVector& Position) const
+{
+ const FVector2D P=(Point-MapOrigin)/CellSize;
+ if(P.X<0||P.Y<0||P.X>=11||P.Y>=11) return false;
+ Position=FVector((P.X-5.5)*1000,(5.5-P.Y)*1000,-5);
+ return true;
+}
+void AVWHUD::Disc(FVector2D Center,float Radius,FLinearColor Color)
+{
+ for(float Y=-Radius;Y<=Radius;Y+=1.f)
+ {
+  const float X=FMath::Sqrt(FMath::Max(0.f,Radius*Radius-Y*Y));
+  DrawLine(Center.X-X,Center.Y+Y,Center.X+X,Center.Y+Y,Color,1.2f);
+ }
 }

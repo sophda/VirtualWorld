@@ -1,5 +1,6 @@
 #include "../VWDomainWorldSubsystem.h"
 #include "../VWWorldSave.h"
+#include "../VWNavigation.h"
 #include "Engine/World.h"
 #include "Misc/AutomationTest.h"
 #include "Kismet/GameplayStatics.h"
@@ -129,4 +130,43 @@ bool FVWValidationTest::RunTest(const FString& Parameters)
  TestFalse(TEXT("Invalid unit rejected"),F.Command(EVWCommandType::MoveUnit,FIntPoint(1,0),{FGuid::NewGuid()}));
  return true;
 }
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWNavigationTest,"VirtualWorld.Domain.ContinuousNavigation",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FVWNavigationTest::RunTest(const FString& Parameters)
+{
+ TArray<FVector> Route;
+ const FVector Start(-1400,-900,-5),Goal(1400,900,-5);
+ TestTrue(TEXT("Open diagonal is reachable"),VWNavigation::BuildPath(Start,Goal,{},Route));
+ TestEqual(TEXT("No axis-aligned detour on open ground"),Route.Num(),1);
+ TArray<FBox2D> Obstacles={FBox2D(FVector2D(-300,-300),FVector2D(300,300))};
+ TestTrue(TEXT("Building is routed around"),VWNavigation::BuildPath(Start,Goal,Obstacles,Route));
+ TestTrue(TEXT("Building causes intermediate waypoints"),Route.Num()>1);
+ FVector Previous=Start;
+ for(const auto& Point:Route)
+ {
+  TestTrue(TEXT("Every segment clears the full formation"),VWNavigation::SegmentClear(Previous,Point,Obstacles));
+  Previous=Point;
+ }
+ TestFalse(TEXT("Blocked destination fails"),VWNavigation::BuildPath(Start,FVector(0,0,-5),Obstacles,Route));
+ FDomainFixture F; F.Command(EVWCommandType::Recruit);
+ const FVector Before=F.Domain->GetSnapshot().Units[0].Position;
+ FVWCommand C; C.Type=EVWCommandType::MoveUnit; C.Issuer=F.Domain->GetPlayerSubjectId();
+ C.Units={F.Domain->GetSnapshot().Units[0].Id}; C.Cell=FIntPoint(1,1);
+ C.bWorldDestination=true; C.Destination=FVector(1375,1125,-5);
+ FString Message;
+ TestTrue(TEXT("Arbitrary continuous destination accepted"),F.Domain->ExecuteCommand(C,Message));
+ F.Domain->AdvanceSimulation();
+ const auto& Moving=F.Domain->GetSnapshot().Units[0];
+ TestTrue(TEXT("Both axes advance in the same step"),Moving.Position.X>Before.X && Moving.Position.Y>Before.Y);
+ TestEqual(TEXT("Target does not snap to the cell centre"),Moving.Destination,C.Destination);
+ for(int32 I=0;I<15;++I) F.Domain->AdvanceSimulation();
+ TestTrue(TEXT("Arrives exactly at continuous target"),F.Domain->GetSnapshot().Units[0].Position.Equals(C.Destination,0.01));
+ auto Saved=F.Domain->GetSnapshot();
+ TestTrue(TEXT("Continuous positions restore"),F.Domain->RestoreSnapshot(Saved,Message));
+ TestEqual(TEXT("Position preserved through restore"),F.Domain->GetSnapshot().Units[0].Position,C.Destination);
+ Saved.Units[0].Position.X=100000;
+ TestFalse(TEXT("Corrupt continuous position rejected"),F.Domain->RestoreSnapshot(Saved,Message));
+ return true;
+}
+
 #endif

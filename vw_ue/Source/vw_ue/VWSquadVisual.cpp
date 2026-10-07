@@ -51,7 +51,7 @@ void AVWSquadVisual::UpdateSquad(const FString& Name,int32 Count,const FVector& 
   for (auto& Soldier : Soldiers) Soldier->PlayAnimation(IdleAnimation,true);
   bInitialized = true;
  }
- if (!Facing.IsNearlyZero()) SetActorRotation(Facing.Rotation());
+ // Face the actual interpolated path segment, including diagonal movement.
  for (int32 I=0; I<5; ++I)
  {
   const bool Visible = I<FMath::Clamp(Count,0,5);
@@ -65,6 +65,7 @@ void AVWSquadVisual::Tick(float DeltaSeconds)
  if (!bInitialized) return;
  const FVector Next = FMath::VInterpConstantTo(GetActorLocation(),Destination,DeltaSeconds,450.f);
  const bool Walking = FVector::DistSquared(Next,GetActorLocation())>0.01f;
+ if (Walking) SetActorRotation((Next-GetActorLocation()).Rotation());
  SetActorLocation(Next);
  if (Walking != bWalking)
  {

@@ -33,6 +33,8 @@ public:
  bool RestoreSnapshot(const FVWWorldSnapshot& Snapshot, FString& Error);
  static bool ValidateSnapshot(const FVWWorldSnapshot& Snapshot, FString& Error);
  void SetCharacterLocation(const FVector& Location);
+ void SetNavigationObstacles(const TArray<FBox2D>& Obstacles);
+ const TArray<FBox2D>& GetNavigationObstacles() const { return NavigationObstacles; }
  UPROPERTY(BlueprintAssignable) FVWDomainEventSignature OnDomainEvent;
 
 private:
@@ -48,4 +50,5 @@ private:
  UPROPERTY() FVWWorldSnapshot State;
  FTimerHandle SimulationTimer;
  double LastShotTime = -1.0;
+ TArray<FBox2D> NavigationObstacles;
 };

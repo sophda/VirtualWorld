@@ -1,4 +1,5 @@
 #include "VWDomainWorldSubsystem.h"
+#include "VWNavigation.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
 
@@ -108,6 +109,10 @@ bool UVWDomainWorldSubsystem::ExecuteCommand(const FVWCommand& Command, FString&
   FVWMilitaryUnitState Unit; Unit.Id = FGuid::NewGuid();
   Unit.Owner = State.NationId.IsValid() ? State.NationId : State.PlayerId;
   Unit.Name = FString::Printf(TEXT("Squad %d"), State.Units.Num() + 1);
+  Unit.bContinuousPosition = true;
+  const int32 Slot = State.Units.Num();
+  Unit.Position = FVector((Slot%3-1)*300,(Slot/3)*320-80,-5);
+  Unit.Destination = Unit.Position;
   State.Units.Add(Unit); Message = TEXT("Five soldiers recruited. Select their marker on the map."); bSuccess = true; break;
  }
  case EVWCommandType::MoveUnit:
@@ -122,8 +127,21 @@ bool UVWDomainWorldSubsystem::ExecuteCommand(const FVWCommand& Command, FString&
        (!(Unit->Owner == State.PlayerId) && !(State.NationId.IsValid() && Unit->Owner == State.NationId))) bValid = false;
   }
   if (!bValid) { Message = TEXT("You do not command all selected units."); break; }
+  TMap<FGuid,TArray<FVector>> Routes;
+  int32 Index = 0;
+  for (const auto& Unit : State.Units) if (Command.Units.Contains(Unit.Id))
+  {
+   const FVector Goal = (Command.bWorldDestination ? Command.Destination : FVector(Command.Cell.X*1000,Command.Cell.Y*1000,-5)) + FVector(0,Index++*320,0);
+   if (!VWNavigation::BuildPath(Unit.Position,Goal,NavigationObstacles,Routes.FindOrAdd(Unit.Id)))
+   { Message=TEXT("Destination blocked or unreachable. Choose open ground."); return false; }
+  }
   for (auto& Unit : State.Units) if (Command.Units.Contains(Unit.Id))
-  { Unit.Target = Command.Cell; Unit.bMoving = true; }
+  {
+   Unit.Waypoints = Routes.FindChecked(Unit.Id);
+   Unit.Destination = Unit.Waypoints.Last();
+   Unit.Target = FIntPoint(FMath::RoundToInt(Unit.Destination.X/1000),FMath::RoundToInt(Unit.Destination.Y/1000));
+   Unit.bMoving = true;
+  }
   Message = TEXT("Move / capture order issued."); bSuccess = true; break;
  }
  case EVWCommandType::FoundNation:
@@ -159,9 +177,10 @@ void UVWDomainWorldSubsystem::AdvanceSimulation()
  for (auto& Unit : State.Units)
  {
   if (!Unit.bMoving || Unit.Soldiers <= 0) continue;
-  FIntPoint Next = Unit.Cell;
-  if (Next.X != Unit.Target.X) Next.X += Unit.Target.X > Next.X ? 1 : -1;
-  else if (Next.Y != Unit.Target.Y) Next.Y += Unit.Target.Y > Next.Y ? 1 : -1;
+  if (Unit.Waypoints.IsEmpty()) { Unit.bMoving=false; continue; }
+  const FVector PreviousPosition = Unit.Position;
+  const FVector NextPosition = FMath::VInterpConstantTo(Unit.Position,Unit.Waypoints[0],1.f,450.f);
+  FIntPoint Next(FMath::RoundToInt(NextPosition.X/1000),FMath::RoundToInt(NextPosition.Y/1000));
   auto* Cell = State.Cells.Find(Next);
   if (!Cell) { Unit.bMoving = false; continue; }
   if (Cell->Defenders > 0 && !(Cell->ControlledBy == Unit.Owner))
@@ -171,13 +190,15 @@ void UVWDomainWorldSubsystem::AdvanceSimulation()
    Cell->Defenders = FMath::Max(0, Cell->Defenders - FMath::Max(1, Unit.Soldiers / 3));
    if (Cell->Defenders > 0) continue;
   }
+  Unit.Position = NextPosition;
   Unit.Cell = Next; Cell->bDisputed = false;
+  if (FVector::Dist2D(Unit.Position,Unit.Waypoints[0])<1.f) Unit.Waypoints.RemoveAt(0);
   if (!(Cell->ControlledBy == Unit.Owner))
   {
    Cell->ControlledBy = Unit.Owner;
    EmitEvent(TEXT("TerritoryChanged"), FString::Printf(TEXT("%s secured (%d, %d)."), *Unit.Name, Next.X, Next.Y));
   }
-  if (Unit.Cell == Unit.Target) Unit.bMoving = false;
+  if (Unit.Waypoints.IsEmpty()) Unit.bMoving = false;
  }
  if (State.SimulationSecond % 10 == 0) SimulateEconomy();
 }
@@ -240,4 +261,13 @@ void UVWDomainWorldSubsystem::DamagePlayer(float Damage)
 void UVWDomainWorldSubsystem::SetCharacterLocation(const FVector& Location)
 {
  if (HasAuthority() && !Location.ContainsNaN()) State.CharacterLocation = Location;
+}
+
+void UVWDomainWorldSubsystem::SetNavigationObstacles(const TArray<FBox2D>& Obstacles)
+{
+ NavigationObstacles = Obstacles;
+ for (auto& Unit : State.Units) if (Unit.bMoving)
+ {
+  Unit.bMoving = VWNavigation::BuildPath(Unit.Position,Unit.Destination,NavigationObstacles,Unit.Waypoints);
+ }
 }

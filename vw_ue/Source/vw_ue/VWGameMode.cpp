@@ -35,6 +35,7 @@ void AVWGameMode::BeginPlay()
 {
  Super::BeginPlay();
  UWorld* World = GetWorld(); if (!HasAuthority() || !World) return;
+ TArray<FBox2D> Obstacles;
  UStaticMesh* Cube = LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube"));
  auto Box = [&](FVector Position,FVector Scale)
  {
@@ -81,6 +82,8 @@ void AVWGameMode::BeginPlay()
   Mesh->SetCollisionProfileName(TEXT("BlockAll"));
   Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
   Actor->SetActorScale3D(FVector(Scale));
+  const FBox WorldBounds = Bounds.TransformBy(Actor->GetActorTransform());
+  Obstacles.Add(FBox2D(FVector2D(WorldBounds.Min),FVector2D(WorldBounds.Max)));
   const TArray<FStaticMaterial>& Slots = Asset->GetStaticMaterials();
   for (int32 Slot=0; Slot<Slots.Num(); ++Slot)
   {
@@ -123,6 +126,8 @@ void AVWGameMode::BeginPlay()
    for (const FVector Site : {FVector(0,3000,-5),FVector(-3400,-1900,-5),FVector(3400,3000,-5)})
    for (AStaticMeshActor* Part : Parts)
    {
+    if (Part == Parts[0])
+     Obstacles.Add(FBox2D(FVector2D(Site+(StructureBounds.Min-Origin)*Scale),FVector2D(Site+(StructureBounds.Max-Origin)*Scale)));
     FTransform Transform = Part->GetActorTransform();
     Transform.SetTranslation(Site+(Transform.GetTranslation()-Origin)*Scale);
     Transform.SetScale3D(Transform.GetScale3D()*Scale);
@@ -147,10 +152,12 @@ void AVWGameMode::BeginPlay()
  for (int32 I=0; I<5; ++I)
  {
   auto* Kiosk = World->SpawnActor<AVWInteractionPoint>(FVector(-200+I*170,-450,70),FRotator::ZeroRotator);
-  if (Kiosk) Kiosk->Configure(Actions[I],Labels[I]);
+  if (Kiosk) { Kiosk->Configure(Actions[I],Labels[I]); const FVector2D P(Kiosk->GetActorLocation()); Obstacles.Add(FBox2D(P-FVector2D(35,35),P+FVector2D(35,35))); }
  }
  for (int32 I=0; I<3; ++I)
   World->SpawnActor<AVWTrainingTarget>(FVector(900,I*220-220,75),FRotator::ZeroRotator);
+ for (int32 I=0; I<3; ++I) { const FVector2D P(900,I*220-220); Obstacles.Add(FBox2D(P-FVector2D(18,45),P+FVector2D(18,45))); }
+ if (auto* Domain = World->GetSubsystem<UVWDomainWorldSubsystem>()) Domain->SetNavigationObstacles(Obstacles);
  World->GetTimerManager().SetTimer(PresentationTimer,this,&AVWGameMode::RefreshPresentation,0.5f,true);
 }
 void AVWGameMode::RefreshPresentation()
@@ -160,13 +167,6 @@ void AVWGameMode::RefreshPresentation()
  {
   const auto& C = Pair.Value;
   const FVector Center(C.Coordinate.X*1000,C.Coordinate.Y*1000,5);
-  if (Domain->OwnsCell(C) || C.bDisputed)
-   DrawDebugBox(GetWorld(),Center,FVector(490,490,5),C.bDisputed ? FColor::Orange : FColor(50,170,145),false,0.55f,0,3);
-  if (C.bRoad)
-  {
-   DrawDebugLine(GetWorld(),Center-FVector(450,0,0),Center+FVector(450,0,0),FColor(110,140,160),false,0.55f,0,12);
-   DrawDebugLine(GetWorld(),Center-FVector(0,450,0),Center+FVector(0,450,0),FColor(110,140,160),false,0.55f,0,12);
-  }
   if (C.Facility != EVWFacility::None)
   {
    const TCHAR* Name = C.Facility == EVWFacility::Mine ? TEXT("MINE") : C.Facility == EVWFacility::Steelworks ? TEXT("STEELWORKS") : TEXT("FACTORY");
@@ -180,15 +180,12 @@ void AVWGameMode::RefreshPresentation()
  {
   if (Unit.Soldiers<=0) continue;
   ActiveSquads.Add(Unit.Id);
-  const int32 Slot = CellOccupancy.FindOrAdd(Unit.Cell)++;
-  // Separate squads sharing a cell so five-person formations do not overlap.
-  const FVector Offset((Slot%3-1)*300,(Slot/3)*300-200,-5);
-  const FVector Position(Unit.Cell.X*1000+Offset.X,Unit.Cell.Y*1000+Offset.Y,Offset.Z);
+  const FVector Position = Unit.Position;
   auto& Visual = SquadVisuals.FindOrAdd(Unit.Id);
   if (!IsValid(Visual)) Visual = GetWorld()->SpawnActor<AVWSquadVisual>(Position,FRotator::ZeroRotator);
   if (Visual)
   {
-   const FVector Facing((Unit.Target.X-Unit.Cell.X)*1000,(Unit.Target.Y-Unit.Cell.Y)*1000,0);
+   const FVector Facing = Unit.Waypoints.IsEmpty() ? FVector::ZeroVector : Unit.Waypoints[0]-Position;
    Visual->UpdateSquad(Unit.Name,Unit.Soldiers,Position,Unit.bMoving ? Facing : FVector::ZeroVector);
   }
  }

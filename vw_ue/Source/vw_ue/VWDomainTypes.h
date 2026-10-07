@@ -78,6 +78,10 @@ struct FVWMilitaryUnitState
  UPROPERTY() FIntPoint Cell = FIntPoint::ZeroValue;
  UPROPERTY() FIntPoint Target = FIntPoint::ZeroValue;
  UPROPERTY() bool bMoving = false;
+ UPROPERTY() bool bContinuousPosition = false;
+ UPROPERTY() FVector Position = FVector::ZeroVector;
+ UPROPERTY() FVector Destination = FVector::ZeroVector;
+ UPROPERTY() TArray<FVector> Waypoints;
 };
 USTRUCT(BlueprintType)
 struct FVWDomainEvent
@@ -130,4 +134,6 @@ struct FVWCommand
  UPROPERTY() FVWSubjectId Issuer;
  UPROPERTY() FIntPoint Cell = FIntPoint::ZeroValue;
  UPROPERTY() TArray<FGuid> Units;
+ UPROPERTY() bool bWorldDestination = false;
+ UPROPERTY() FVector Destination = FVector::ZeroVector;
 };
