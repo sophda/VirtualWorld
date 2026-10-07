@@ -1,0 +1,8 @@
+[mcp_servers.unreal_engine]
+command = "cmd"
+args = ["/c", "npx", "-y", "unreal-engine-mcp-server@beta"]
+env = { UE_PROJECT_PATH = "E:/MyProjects/VirtualWorld/vw_ue" }
+enabled = true
+startup_timeout_sec = 60
+tool_timeout_sec = 120
+default_tools_approval_mode = "prompt"

@@ -1,0 +1,47 @@
+# Unreal Engine generated folders
+**/Binaries/
+**/DerivedDataCache/
+**/Intermediate/
+**/Saved/
+**/Script/
+
+# Temporary source checkout used to install the Unreal MCP plugin
+/.mcp-plugin-source/
+
+# Build and IDE output
+**/.vs/
+**/.vscode/
+**/.idea/
+**/ipch/
+**/Build/
+*.VC.db
+*.VC.opendb
+*.sdf
+*.suo
+*.opensdf
+*.sln
+*.slnx
+*.xcodeproj/
+*.xcworkspace/
+*.xcuserstate
+
+# Unreal-generated project and editor files
+*.code-workspace
+*.generated.h
+*.tmp
+*.log
+*.dmp
+*.bak
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+guide.md
+virtual world.md
+
+# Keep project source assets and settings tracked:
+# Config/, Content/, Source/, Plugins/, *.uproject
