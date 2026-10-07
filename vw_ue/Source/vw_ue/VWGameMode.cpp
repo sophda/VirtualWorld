@@ -35,9 +35,22 @@ void AVWGameMode::BeginPlay()
  auto Box = [&](FVector Position,FVector Scale)
  {
   auto* Actor = World->SpawnActor<AStaticMeshActor>(Position,FRotator::ZeroRotator);
-  if (Actor) { Actor->GetStaticMeshComponent()->SetStaticMesh(Cube); Actor->SetActorScale3D(Scale); }
+  if (Actor)
+  {
+   auto* Mesh = Actor->GetStaticMeshComponent();
+   Mesh->SetMobility(EComponentMobility::Movable);
+   Mesh->SetStaticMesh(Cube);
+   Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+   Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+   Actor->SetActorScale3D(Scale);
+  }
  };
  Box(FVector(0,0,-30),FVector(110,110,0.5));
+ // Visible collision boundaries prevent walking off the finite prototype floor.
+ Box(FVector(5450,0,250),FVector(1,110,5));
+ Box(FVector(-5450,0,250),FVector(1,110,5));
+ Box(FVector(0,5450,250),FVector(110,1,5));
+ Box(FVector(0,-5450,250),FVector(110,1,5));
  auto* Sun = World->SpawnActor<ADirectionalLight>(FVector(0,0,1000),FRotator(-50,-35,0));
  if (Sun && Sun->GetLightComponent()) { Sun->GetLightComponent()->SetIntensity(5.f); CastChecked<UDirectionalLightComponent>(Sun->GetLightComponent())->SetAtmosphereSunLight(true); }
  World->SpawnActor<ASkyAtmosphere>();

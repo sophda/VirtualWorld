@@ -45,6 +45,23 @@ AVWCharacter::AVWCharacter()
 void AVWCharacter::Tick(float DeltaSeconds)
 {
  Super::Tick(DeltaSeconds);
+ if (GetNetMode() == NM_Standalone)
+ {
+  const FVector Position = GetActorLocation();
+  if (Position.ContainsNaN() || Position.Z < -500.f || FMath::Abs(Position.X) > 5300.f || FMath::Abs(Position.Y) > 5300.f)
+  {
+   // The graybox has a finite floor. Recover before leaving it or reaching KillZ.
+   const FVector SafePosition = Position.ContainsNaN() || Position.Z < -500.f
+    ? FVector(0,0,120)
+    : FVector(FMath::Clamp(Position.X,-5300.0,5300.0),FMath::Clamp(Position.Y,-5300.0,5300.0),Position.Z);
+   SetActorLocation(SafePosition,false,nullptr,ETeleportType::TeleportPhysics);
+   GetCharacterMovement()->StopMovementImmediately();
+   if (auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>()) Domain->SetCharacterLocation(SafePosition);
+   if (auto* PC = Cast<AVWPlayerController>(Controller))
+   { PC->Feedback = TEXT("Test-area boundary reached. Returned to safe ground."); PC->bFeedbackSuccess = true; }
+  }
+ }
+
  if (auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>())
   WeaponVisual->SetVisibility(Domain->GetSnapshot().bRifle && bFirstPerson);
 }
