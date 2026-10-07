@@ -42,6 +42,6 @@ Desktop.ini
 *~
 guide.md
 virtual world.md
-
+*.uasset
 # Keep project source assets and settings tracked:
 # Config/, Content/, Source/, Plugins/, *.uproject

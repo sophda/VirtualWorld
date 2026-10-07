@@ -1,4 +1,5 @@
 #include "VWGameMode.h"
+#include "VWSquadVisual.h"
 #include "VWCharacter.h"
 #include "VWPlayerController.h"
 #include "VWHUD.h"
@@ -15,6 +16,9 @@
 #include "Engine/SkyLight.h"
 #include "Engine/StaticMeshActor.h"
 #include "Engine/World.h"
+#include "Engine/StaticMesh.h"
+#include "Engine/Level.h"
+#include "Materials/MaterialInterface.h"
 #include "GameFramework/PlayerStart.h"
 #include "EngineUtils.h"
 #include "DrawDebugHelpers.h"
@@ -40,6 +44,8 @@ void AVWGameMode::BeginPlay()
    auto* Mesh = Actor->GetStaticMeshComponent();
    Mesh->SetMobility(EComponentMobility::Movable);
    Mesh->SetStaticMesh(Cube);
+   if (auto* GroundMaterial = LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/Building/Materials/MI_StdOpaque_Concrete_Ground.MI_StdOpaque_Concrete_Ground")))
+    Mesh->SetMaterial(0,GroundMaterial);
    Mesh->SetCollisionProfileName(TEXT("BlockAll"));
    Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
    Actor->SetActorScale3D(Scale);
@@ -56,10 +62,79 @@ void AVWGameMode::BeginPlay()
  World->SpawnActor<ASkyAtmosphere>();
  auto* Sky = World->SpawnActor<ASkyLight>();
  if (Sky) { Sky->GetLightComponent()->SetIntensity(0.7f); Sky->GetLightComponent()->SetRealTimeCapture(true); }
- // Towns and tribe are geometry representations, not the authoritative settlement state.
- for (const FIntPoint Center : {FIntPoint(0,0),FIntPoint(-2,-1),FIntPoint(2,0)})
- for (int32 Index=0; Index<4; ++Index)
-  Box(FVector(Center.X*1000+(Index%2)*300-150,Center.Y*1000+600+(Index/2)*300,150),FVector(2,2,3));
+ // Native Epic architectural meshes preserve windows, facade detail and PBR materials.
+ auto Architecture = [&](const TCHAR* AssetPath,FVector Position,float Width,float Yaw)
+ {
+  UStaticMesh* Asset = LoadObject<UStaticMesh>(nullptr,AssetPath);
+  if (!Asset) return;
+  const FBox Bounds = Asset->GetBoundingBox();
+  const FVector Size = Bounds.GetSize();
+  const float Scale = Width/FMath::Max(FCString::Strstr(AssetPath,TEXT("StreetLight")) ? Size.Z : FMath::Max(Size.X,Size.Y),1.f);
+  const FRotator Rotation(0,Yaw,0);
+  const FVector PivotOffset = Rotation.RotateVector(FVector(-Bounds.GetCenter().X,-Bounds.GetCenter().Y,-Bounds.Min.Z)*Scale);
+  auto* Actor = World->SpawnActor<AStaticMeshActor>(Position+PivotOffset,Rotation);
+  if (!Actor) return;
+  auto* Mesh = Actor->GetStaticMeshComponent();
+  Mesh->SetMobility(EComponentMobility::Movable);
+  Mesh->SetStaticMesh(Asset);
+  Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+  Mesh->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+  Actor->SetActorScale3D(FVector(Scale));
+  const TArray<FStaticMaterial>& Slots = Asset->GetStaticMaterials();
+  for (int32 Slot=0; Slot<Slots.Num(); ++Slot)
+  {
+   const FString SlotName = Slots[Slot].MaterialSlotName.ToString();
+   const TCHAR* MaterialPath = SlotName.Contains(TEXT("Roof"))
+    ? TEXT("/Game/Building/Materials/MI_Roof.MI_Roof")
+    : SlotName.Contains(TEXT("Structure")) || SlotName.Contains(TEXT("Column"))
+     ? TEXT("/Game/Building/Materials/MI_StdOpaque_Brushed.MI_StdOpaque_Brushed")
+     : TEXT("/Game/Building/Materials/MI_StdOpaque_Concrete.MI_StdOpaque_Concrete");
+   if (auto* Material = LoadObject<UMaterialInterface>(nullptr,MaterialPath))
+    Mesh->SetMaterial(Slot,Material);
+  }
+ };
+ // The ArchVis scene stores its facade, glass, slabs and frames as separate meshes.
+ // Reproduce their authored transforms together, rather than reducing them to cubes.
+ UWorld* ArchitectureWorld = LoadObject<UWorld>(nullptr,TEXT("/Game/ArchVis/SampleScene/SampleLevel.SampleLevel"));
+ if (ArchitectureWorld && ArchitectureWorld->PersistentLevel)
+ {
+  FBox BuildingBounds(ForceInit);
+  TArray<AStaticMeshActor*> Parts;
+  for (AActor* Source : ArchitectureWorld->PersistentLevel->Actors)
+  {
+   auto* Part = Cast<AStaticMeshActor>(Source);
+   if (!Part || !Part->GetStaticMeshComponent()->GetStaticMesh()) continue;
+   if (!Part->GetStaticMeshComponent()->GetStaticMesh()->GetPathName().Contains(TEXT("/Building/Meshes/"))) continue;
+   Parts.Add(Part);
+   BuildingBounds += Part->GetComponentsBoundingBox(true);
+  }
+  if (BuildingBounds.IsValid)
+  {
+   const FVector Extent = BuildingBounds.GetSize();
+   const float Scale = 1600.f/FMath::Max(Extent.X,Extent.Y);
+   const FVector Origin(BuildingBounds.GetCenter().X,BuildingBounds.GetCenter().Y,BuildingBounds.Min.Z);
+   for (const FVector Site : {FVector(0,1650,-5),FVector(-2800,-900,-5),FVector(2800,1650,-5)})
+   for (AStaticMeshActor* Part : Parts)
+   {
+    FTransform Transform = Part->GetActorTransform();
+    Transform.SetTranslation(Site+(Transform.GetTranslation()-Origin)*Scale);
+    Transform.SetScale3D(Transform.GetScale3D()*Scale);
+    auto* Copy = World->SpawnActor<AStaticMeshActor>(AStaticMeshActor::StaticClass(),Transform);
+    if (!Copy) continue;
+    auto* Mesh = Copy->GetStaticMeshComponent();
+    auto* SourceMesh = Part->GetStaticMeshComponent();
+    Mesh->SetMobility(EComponentMobility::Movable);
+    Mesh->SetStaticMesh(SourceMesh->GetStaticMesh());
+    for (int32 Slot=0; Slot<SourceMesh->GetNumMaterials(); ++Slot)
+     Mesh->SetMaterial(Slot,SourceMesh->GetMaterial(Slot));
+    Mesh->SetCollisionProfileName(TEXT("BlockAll"));
+   }
+  }
+ }
+ Architecture(TEXT("/Game/Building/Geometry/SM_Building.SM_Building"),FVector(-1000,1000,-5),650,180);
+ for (int32 Index=0; Index<8; ++Index)
+  Architecture(TEXT("/Game/Building/Geometry/SM_StreetLight.SM_StreetLight"),FVector(-1500+Index*600,450,-5),400,180);
+ Architecture(TEXT("/Game/Building/Geometry/SM_FlowerBed.SM_FlowerBed"),FVector(-550,150,-5),300,0);
  const EVWCommandType Actions[] = {EVWCommandType::Work,EVWCommandType::BuyRifle,EVWCommandType::Recruit,EVWCommandType::Heal,EVWCommandType::BuyHouse};
  const TCHAR* Labels[] = {TEXT("WORK / $150"),TEXT("RIFLE / $400"),TEXT("RECRUIT / $600"),TEXT("SUPPLIES / $25"),TEXT("HOUSE / $500")};
  for (int32 I=0; I<5; ++I)
@@ -92,10 +167,28 @@ void AVWGameMode::RefreshPresentation()
    DrawDebugString(GetWorld(),Center+FVector(0,0,230),Name,nullptr,FColor::White,0.5f,false,1.f);
   }
  }
+ TSet<FGuid> ActiveSquads;
+ TMap<FIntPoint,int32> CellOccupancy;
  for (const auto& Unit : Domain->GetSnapshot().Units)
  {
-  const FVector P(Unit.Cell.X*1000,Unit.Cell.Y*1000,100);
-  DrawDebugSphere(GetWorld(),P,50,8,FColor::Green,false,0.55f);
-  DrawDebugString(GetWorld(),P+FVector(0,0,90),Unit.Name,nullptr,FColor::White,0.5f,false,1.f);
+  if (Unit.Soldiers<=0) continue;
+  ActiveSquads.Add(Unit.Id);
+  const int32 Slot = CellOccupancy.FindOrAdd(Unit.Cell)++;
+  // Separate squads sharing a cell so five-person formations do not overlap.
+  const FVector Offset((Slot%3-1)*300,(Slot/3)*300-200,-5);
+  const FVector Position(Unit.Cell.X*1000+Offset.X,Unit.Cell.Y*1000+Offset.Y,Offset.Z);
+  auto& Visual = SquadVisuals.FindOrAdd(Unit.Id);
+  if (!IsValid(Visual)) Visual = GetWorld()->SpawnActor<AVWSquadVisual>(Position,FRotator::ZeroRotator);
+  if (Visual)
+  {
+   const FVector Facing((Unit.Target.X-Unit.Cell.X)*1000,(Unit.Target.Y-Unit.Cell.Y)*1000,0);
+   Visual->UpdateSquad(Unit.Name,Unit.Soldiers,Position,Unit.bMoving ? Facing : FVector::ZeroVector);
+  }
  }
+ for (auto It=SquadVisuals.CreateIterator(); It; ++It)
+  if (!ActiveSquads.Contains(It.Key()))
+  {
+   if (IsValid(It.Value())) It.Value()->Destroy();
+   It.RemoveCurrent();
+  }
 }

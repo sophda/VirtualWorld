@@ -4,6 +4,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "VWGameMode.generated.h"
 
+class AVWSquadVisual;
 UCLASS()
 class VW_UE_API AVWGameMode : public AGameModeBase
 {
@@ -15,4 +16,5 @@ public:
 private:
  void RefreshPresentation();
  FTimerHandle PresentationTimer;
+ UPROPERTY() TMap<FGuid,TObjectPtr<AVWSquadVisual>> SquadVisuals;
 };

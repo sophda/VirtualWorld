@@ -6,6 +6,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
+#include "Engine/SkeletalMesh.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Animation/AnimSequence.h"
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -21,13 +24,12 @@ AVWCharacter::AVWCharacter()
  GetCharacterMovement()->MaxWalkSpeed = 520.f;
  GetCharacterMovement()->JumpZVelocity = 500.f; GetCharacterMovement()->AirControl = 0.35f;
  bUseControllerRotationYaw = true; GetCharacterMovement()->bOrientRotationToMovement = false;
- BodyVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("BodyVisual"));
- BodyVisual->SetupAttachment(GetCapsuleComponent());
- BodyVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
- BodyVisual->SetRelativeLocation(FVector(0,0,-12));
- BodyVisual->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
- BodyVisual->SetRelativeScale3D(FVector(0.65,0.65,0.9));
- BodyVisual->SetOwnerNoSee(true);
+ GetMesh()->SetSkeletalMesh(LoadObject<USkeletalMesh>(nullptr,TEXT("/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple.SKM_Manny_Simple")));
+ GetMesh()->SetRelativeLocation(FVector(0,0,-96));
+ GetMesh()->SetRelativeRotation(FRotator(0,-90,0));
+ GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+ GetMesh()->SetOwnerNoSee(true);
+ GetMesh()->SetAnimationMode(EAnimationMode::AnimationSingleNode);
  CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
  CameraBoom->SetupAttachment(GetCapsuleComponent()); CameraBoom->TargetArmLength = 0.f;
  CameraBoom->bUsePawnControlRotation = true; CameraBoom->bDoCollisionTest = true;
@@ -36,11 +38,11 @@ AVWCharacter::AVWCharacter()
  Camera->bUsePawnControlRotation = false;
  WeaponVisual = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RifleVisual"));
  WeaponVisual->SetupAttachment(Camera);
- WeaponVisual->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
- WeaponVisual->SetRelativeLocation(FVector(45,18,-16));
- WeaponVisual->SetRelativeScale3D(FVector(0.60,0.08,0.09));
+ WeaponVisual->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Game/Weapons/Rifle/Meshes/SM_Rifle.SM_Rifle")));
+ WeaponVisual->SetRelativeLocation(FVector(20,15,-17));
+ WeaponVisual->SetRelativeScale3D(FVector(1,1,1));
  WeaponVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
- WeaponVisual->SetOnlyOwnerSee(true); WeaponVisual->SetVisibility(false);
+ WeaponVisual->SetOnlyOwnerSee(false); WeaponVisual->SetVisibility(false);
 }
 void AVWCharacter::Tick(float DeltaSeconds)
 {
@@ -63,7 +65,33 @@ void AVWCharacter::Tick(float DeltaSeconds)
  }
 
  if (auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>())
-  WeaponVisual->SetVisibility(Domain->GetSnapshot().bRifle && bFirstPerson);
+ {
+  const bool Armed = Domain->GetSnapshot().bRifle;
+  WeaponVisual->SetVisibility(Armed);
+  if (bFirstPerson)
+  {
+   WeaponVisual->AttachToComponent(Camera,FAttachmentTransformRules::KeepRelativeTransform);
+   WeaponVisual->SetRelativeLocation(FVector(20,15,-17));
+   WeaponVisual->SetRelativeRotation(FRotator::ZeroRotator);
+  }
+  else
+  {
+   WeaponVisual->AttachToComponent(GetMesh(),FAttachmentTransformRules::KeepRelativeTransform,TEXT("hand_r"));
+   WeaponVisual->SetRelativeLocation(FVector::ZeroVector);
+   WeaponVisual->SetRelativeRotation(FRotator(0,90,0));
+  }
+  const bool Moving = GetVelocity().SizeSquared2D() > 100.f;
+  const TCHAR* AnimationPath = GetCharacterMovement()->IsFalling()
+   ? TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jump/MM_Fall_Loop.MM_Fall_Loop")
+   : Armed
+    ? (Moving ? TEXT("/Game/Characters/Mannequins/Anims/Rifle/Jog/MF_Rifle_Jog_Fwd.MF_Rifle_Jog_Fwd") : TEXT("/Game/Characters/Mannequins/Anims/Rifle/MF_Rifle_Idle_ADS.MF_Rifle_Idle_ADS"))
+    : (Moving ? TEXT("/Game/Characters/Mannequins/Anims/Unarmed/Jog/MF_Unarmed_Jog_Fwd.MF_Unarmed_Jog_Fwd") : TEXT("/Game/Characters/Mannequins/Anims/Unarmed/MM_Idle.MM_Idle"));
+  if (CurrentAnimationPath != AnimationPath)
+  {
+   CurrentAnimationPath = AnimationPath;
+   GetMesh()->PlayAnimation(LoadObject<UAnimSequence>(nullptr,AnimationPath),true);
+  }
+ }
 }
 void AVWCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
@@ -100,7 +128,7 @@ void AVWCharacter::ToggleCameraMode()
  bFirstPerson = !bFirstPerson;
  CameraBoom->TargetArmLength = bFirstPerson ? 0.f : 320.f;
  Camera->SetRelativeLocation(bFirstPerson ? FVector(0,0,64) : FVector(0,0,76));
- BodyVisual->SetOwnerNoSee(bFirstPerson);
+ GetMesh()->SetOwnerNoSee(bFirstPerson);
 }
 void AVWCharacter::FireWeapon()
 {

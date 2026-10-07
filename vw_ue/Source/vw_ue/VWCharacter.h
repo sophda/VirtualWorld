@@ -39,8 +39,8 @@ private:
 	UPROPERTY(VisibleAnywhere, Category="Virtual World|Camera")
 	TObjectPtr<UCameraComponent> Camera;
 
-	UPROPERTY(VisibleAnywhere, Category="Virtual World|Presentation")
-	TObjectPtr<UStaticMeshComponent> BodyVisual;
+	UPROPERTY()
+	FString CurrentAnimationPath;
 
 	UPROPERTY() TObjectPtr<UStaticMeshComponent> WeaponVisual;
  bool bFirstPerson = true;
