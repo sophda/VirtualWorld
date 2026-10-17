@@ -2,6 +2,8 @@
 #include "Camera/CameraComponent.h"
 #include "Components/SceneComponent.h"
 #include "InputCoreTypes.h"
+#include "VWHUD.h"
+#include "GameFramework/PlayerController.h"
 
 AVWStrategicCameraPawn::AVWStrategicCameraPawn()
 {
@@ -35,7 +37,7 @@ void AVWStrategicCameraPawn::MoveY(const float Value) { MoveRightAxis = Value; }
 void AVWStrategicCameraPawn::Zoom(const float Value)
 {
 	if (FMath::IsNearlyZero(Value)) return;
-	const float NewHeight = FMath::Clamp(GetActorLocation().Z - Value * 250.f, 600.f, 6000.f);
-	SetActorLocation(FVector(GetActorLocation().X, GetActorLocation().Y, NewHeight));
+ if (auto* PC = Cast<APlayerController>(GetController()))
+  if (auto* HUD = Cast<AVWHUD>(PC->GetHUD())) HUD->ZoomMap(Value);
 }
 

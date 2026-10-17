@@ -11,12 +11,58 @@ namespace
  const FLinearColor Accent(0.30f,0.85f,0.72f);
  const FLinearColor Amber(1.f,0.70f,0.30f);
 }
+void AVWHUD::ZoomMap(float Amount)
+{
+ auto* PC = Cast<AVWPlayerController>(PlayerOwner);
+ float X,Y;
+ if (!PC || !PC->IsStrategicMode() || bDragging || !MapBounds.bIsValid ||
+     !PC->GetMousePosition(X,Y) || !MapBounds.IsInside(FVector2D(X,Y))) return;
+ const float NewZoom = FMath::Clamp(MapZoom*FMath::Pow(1.2f,Amount),1.f,8.f);
+ const FVector2D Cursor(X,Y);
+ const FVector2D Anchor = (Cursor-MapOrigin)/CellSize;
+ const float NewSize = CellSize*NewZoom/MapZoom;
+ MapFocus = Anchor-(Cursor-MapBounds.GetCenter())/NewSize;
+ MapZoom = NewZoom;
+}
+void AVWHUD::MapRect(FLinearColor Color,float X,float Y,float Width,float Height)
+{
+ const float Left=FMath::Max(X,float(MapBounds.Min.X)), Top=FMath::Max(Y,float(MapBounds.Min.Y));
+ const float Right=FMath::Min(X+Width,float(MapBounds.Max.X)), Bottom=FMath::Min(Y+Height,float(MapBounds.Max.Y));
+ if (Right>Left && Bottom>Top) DrawRect(Color,Left,Top,Right-Left,Bottom-Top);
+}
+void AVWHUD::MapLine(float X1,float Y1,float X2,float Y2,FLinearColor Color,float Thickness)
+{
+ const FVector2D Start(X1,Y1), Delta(X2-X1,Y2-Y1);
+ double Near=0,Far=1;
+ for (int Axis=0;Axis<2;++Axis)
+ {
+  const double A=Axis==0?Start.X:Start.Y, D=Axis==0?Delta.X:Delta.Y;
+  const double Min=Axis==0?MapBounds.Min.X:MapBounds.Min.Y, Max=Axis==0?MapBounds.Max.X:MapBounds.Max.Y;
+  if (FMath::IsNearlyZero(D)) { if (A<Min || A>Max) return; }
+  else
+  {
+   double T1=(Min-A)/D,T2=(Max-A)/D;
+   if (T1>T2) Swap(T1,T2);
+   Near=FMath::Max(Near,T1); Far=FMath::Min(Far,T2);
+   if (Near>Far) return;
+  }
+ }
+ const FVector2D A=Start+Delta*Near,B=Start+Delta*Far;
+ DrawLine(A.X,A.Y,B.X,B.Y,Color,Thickness);
+}
+void AVWHUD::MapText(const FString& Text,FLinearColor Color,float X,float Y,float Scale)
+{
+ float Width,Height; GetTextSize(Text,Width,Height,nullptr,Scale);
+ if (X>=MapBounds.Min.X && Y>=MapBounds.Min.Y && X+Width<=MapBounds.Max.X && Y+Height<=MapBounds.Max.Y)
+  DrawText(Text,Color,X,Y,nullptr,Scale);
+}
 FVector2D AVWHUD::CellCenter(FIntPoint Cell) const
 {
  return MapOrigin + FVector2D(Cell.X + 5.5f, 5.5f - Cell.Y) * CellSize;
 }
 bool AVWHUD::CellAt(FVector2D Point, FIntPoint& Cell) const
 {
+ if (!MapBounds.bIsValid || !MapBounds.IsInside(Point)) return false;
  const FVector2D Relative = (Point - MapOrigin) / CellSize;
  if (Relative.X < 0 || Relative.Y < 0 || Relative.X >= 11 || Relative.Y >= 11) return false;
  Cell = FIntPoint(FMath::FloorToInt(Relative.X) - 5, 5 - FMath::FloorToInt(Relative.Y)); return true;
@@ -81,11 +127,16 @@ void AVWHUD::DrawHUD()
  Button(PC->bTerritoryLayer ? TEXT("Control ON") : TEXT("Control OFF"),28,505,128,-3);
  Button(TEXT("Load F9"),164,505,128,static_cast<int32>(EVWCommandType::Load));
  DrawText(TEXT("LMB select location/squad | Drag to select squads"),Muted,330,114,nullptr,0.85f);
- DrawText(TEXT("RMB move anywhere / capture | Routes avoid obstacles"),Muted,330,137,nullptr,0.85f);
- CellSize = FMath::Max(8.f, FMath::Min((W-365.f)/11.f,(H-200.f)/11.f));
- MapOrigin = FVector2D(330,165);
+ DrawText(*FString::Printf(TEXT("Wheel zoom %.0f%% | RMB move / capture"),MapZoom*100.f),Muted,330,137,nullptr,0.85f);
+ const float BaseSize = FMath::Max(8.f, FMath::Min((W-365.f)/11.f,(H-290.f)/11.f));
+ CellSize = BaseSize * MapZoom;
+ MapBounds = FBox2D(FVector2D(330,165),FVector2D(330+BaseSize*11,165+BaseSize*11));
+ const float HalfVisible = 5.5f/MapZoom;
+ MapFocus.X = FMath::Clamp(MapFocus.X,HalfVisible,11.f-HalfVisible);
+ MapFocus.Y = FMath::Clamp(MapFocus.Y,HalfVisible,11.f-HalfVisible);
+ MapOrigin = MapBounds.GetCenter()-MapFocus*CellSize;
  const float MapWidth=CellSize*11;
- DrawRect(FLinearColor(0.08f,0.15f,0.13f),MapOrigin.X,MapOrigin.Y,MapWidth,MapWidth);
+ MapRect(FLinearColor(0.08f,0.15f,0.13f),MapOrigin.X,MapOrigin.Y,MapWidth,MapWidth);
  // Continuous terrain presentation: no tile outlines or snapped unit markers.
  if (PC->bTerritoryLayer)
  for (const auto& Pair:S.Cells)
@@ -100,7 +151,7 @@ void AVWHUD::DrawHUD()
  {
   const FVector2D A=MapPoint(FVector(Box.Min.X,Box.Max.Y,0));
   const FVector2D B=MapPoint(FVector(Box.Max.X,Box.Min.Y,0));
-  DrawRect(FLinearColor(0.30f,0.34f,0.33f),A.X,A.Y,B.X-A.X,B.Y-A.Y);
+  MapRect(FLinearColor(0.30f,0.34f,0.33f),A.X,A.Y,B.X-A.X,B.Y-A.Y);
  }
  for (const auto& Pair:S.Cells)
  {
@@ -109,17 +160,17 @@ void AVWHUD::DrawHUD()
   if (PC->bResourcesLayer && C.bSurveyed && C.Resource!=EVWResource::None)
   {
    Disc(P,5,Amber);
-   DrawText(C.Resource==EVWResource::Iron?TEXT("Fe"):TEXT("Coal"),Amber,P.X+7,P.Y-5,nullptr,0.7f);
+   MapText(C.Resource==EVWResource::Iron?TEXT("Fe"):TEXT("Coal"),Amber,P.X+7,P.Y-5,0.7f);
   }
   if (!C.Settlement.IsEmpty())
-   DrawText(C.Defenders>0?TEXT("TRIBE"):TEXT("TOWN"),Muted,P.X+7,P.Y+8,nullptr,0.65f);
+   MapText(C.Defenders>0?TEXT("TRIBE"):TEXT("TOWN"),Muted,P.X+7,P.Y+8,0.65f);
   if (C.Facility!=EVWFacility::None)
-   DrawText(C.Facility==EVWFacility::Mine?TEXT("MINE"):C.Facility==EVWFacility::Steelworks?TEXT("STEEL"):TEXT("FACTORY"),Ink,P.X+6,P.Y+17,nullptr,0.65f);
+   MapText(C.Facility==EVWFacility::Mine?TEXT("MINE"):C.Facility==EVWFacility::Steelworks?TEXT("STEEL"):TEXT("FACTORY"),Ink,P.X+6,P.Y+17,0.65f);
   if (C.bRoad)
   for (const FIntPoint Offset:{FIntPoint(1,0),FIntPoint(0,1)})
   {
    const auto* Neighbor=S.Cells.Find(C.Coordinate+Offset);
-   if (Neighbor && Neighbor->bRoad) { const FVector2D Q=CellCenter(Neighbor->Coordinate); DrawLine(P.X,P.Y,Q.X,Q.Y,Muted,2); }
+   if (Neighbor && Neighbor->bRoad) { const FVector2D Q=CellCenter(Neighbor->Coordinate); MapLine(P.X,P.Y,Q.X,Q.Y,Muted,2); }
   }
  }
  Disc(CellCenter(PC->GetSelectedCell()),4,Accent);
@@ -134,13 +185,13 @@ void AVWHUD::DrawHUD()
    for (const auto& Waypoint:Unit.Waypoints)
    {
     const FVector2D Next=MapPoint(Waypoint);
-    DrawLine(Previous.X,Previous.Y,Next.X,Next.Y,Selected?Accent:Muted,1.5f);
+    MapLine(Previous.X,Previous.Y,Next.X,Next.Y,Selected?Accent:Muted,1.5f);
     Previous=Next;
    }
    Disc(MapPoint(Unit.Destination),3,Selected?Accent:Muted);
   }
   Disc(P,Selected?7.f:5.f,Selected?Accent:Ink);
-  DrawText(FString::Printf(TEXT("%s (%d)"),*Unit.Name,Unit.Soldiers),Ink,P.X+9,P.Y-7,nullptr,0.7f);
+  MapText(FString::Printf(TEXT("%s (%d)"),*Unit.Name,Unit.Soldiers),Ink,P.X+9,P.Y-7,0.7f);
  }
  const auto* Selected = S.Cells.Find(PC->GetSelectedCell());
  if (Selected)
@@ -186,12 +237,12 @@ void AVWHUD::PointerReleased()
  auto* PC = Cast<AVWPlayerController>(PlayerOwner);
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>(); float X,Y;
  if (!PC || !Domain || !PC->GetMousePosition(X,Y) || !PC->bMilitaryLayer) return;
- FVector2D End(X,Y); TArray<FGuid> Selection;
+ FVector2D End(FMath::Clamp(X,MapBounds.Min.X,MapBounds.Max.X),FMath::Clamp(Y,MapBounds.Min.Y,MapBounds.Max.Y)); TArray<FGuid> Selection;
  const bool Box = FVector2D::Distance(DragStart,End)>8.f;
  FBox2D Bounds(FVector2D(FMath::Min(End.X,DragStart.X),FMath::Min(End.Y,DragStart.Y)),
                FVector2D(FMath::Max(End.X,DragStart.X),FMath::Max(End.Y,DragStart.Y)));
  for (const auto& Unit : Domain->GetSnapshot().Units)
-  if (Box ? Bounds.IsInside(MapPoint(Unit.Position)) : FVector2D::Distance(MapPoint(Unit.Position),End)<14.f) Selection.Add(Unit.Id);
+  if (MapBounds.IsInside(MapPoint(Unit.Position)) && (Box ? Bounds.IsInside(MapPoint(Unit.Position)) : FVector2D::Distance(MapPoint(Unit.Position),End)<14.f)) Selection.Add(Unit.Id);
  PC->SelectUnits(Selection);
 }
 
@@ -201,6 +252,7 @@ FVector2D AVWHUD::MapPoint(const FVector& Position) const
 }
 bool AVWHUD::WorldAt(FVector2D Point,FVector& Position) const
 {
+ if (!MapBounds.bIsValid || !MapBounds.IsInside(Point)) return false;
  const FVector2D P=(Point-MapOrigin)/CellSize;
  if(P.X<0||P.Y<0||P.X>=11||P.Y>=11) return false;
  Position=FVector((P.X-5.5)*1000,(5.5-P.Y)*1000,-5);
@@ -208,9 +260,10 @@ bool AVWHUD::WorldAt(FVector2D Point,FVector& Position) const
 }
 void AVWHUD::Disc(FVector2D Center,float Radius,FLinearColor Color)
 {
- for(float Y=-Radius;Y<=Radius;Y+=1.f)
+ if (!MapBounds.bIsValid || Center.X+Radius<MapBounds.Min.X || Center.X-Radius>MapBounds.Max.X || Center.Y+Radius<MapBounds.Min.Y || Center.Y-Radius>MapBounds.Max.Y) return;
+ for(float Y=FMath::Max(-Radius,MapBounds.Min.Y-Center.Y);Y<=FMath::Min(Radius,MapBounds.Max.Y-Center.Y);Y+=1.f)
  {
   const float X=FMath::Sqrt(FMath::Max(0.f,Radius*Radius-Y*Y));
-  DrawLine(Center.X-X,Center.Y+Y,Center.X+X,Center.Y+Y,Color,1.2f);
+  MapLine(Center.X-X,Center.Y+Y,Center.X+X,Center.Y+Y,Color,1.2f);
  }
 }
