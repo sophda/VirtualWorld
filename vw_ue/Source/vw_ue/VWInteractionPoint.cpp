@@ -1,13 +1,11 @@
 #include "VWInteractionPoint.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
-#include "Engine/StaticMesh.h"
 AVWInteractionPoint::AVWInteractionPoint()
 {
  Mesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Kiosk"));
  SetRootComponent(Mesh);
- Mesh->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube")));
- Mesh->SetRelativeScale3D(FVector(0.7,0.7,1.4));
+ Mesh->SetCollisionProfileName(TEXT("BlockAll"));
  Text = CreateDefaultSubobject<UTextRenderComponent>(TEXT("Label"));
  Text->SetupAttachment(Mesh);
  Text->SetRelativeLocation(FVector(-52,0,110));
@@ -17,5 +15,11 @@ AVWInteractionPoint::AVWInteractionPoint()
 }
 void AVWInteractionPoint::Configure(EVWCommandType InAction, const FString& Label)
 {
- Action = InAction; Text->SetText(FText::FromString(Label + TEXT("\n[E] interact")));
+ Action = InAction; DisplayLabel = Label;
+ Text->SetText(FText::FromString(DisplayLabel + TEXT("\n[E] interact")));
+}
+void AVWInteractionPoint::OnConstruction(const FTransform& Transform)
+{
+ Super::OnConstruction(Transform);
+ Text->SetText(FText::FromString(DisplayLabel + TEXT("\n[E] interact")));
 }

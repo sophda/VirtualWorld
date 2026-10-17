@@ -5,13 +5,25 @@
 
 ## 启动
 
-打开 `vw_ue.uproject`，默认关卡为 `/Game/Maps/Prototype`，点击 Play。
-城镇、部落、交互站和射击场由 GameMode 在游戏开始时生成，编辑器未开始 Play 时地图为空属于正常情况。
+打开 `vw_ue.uproject`，默认关卡为 `/Game/Maps/ArchVisWorld`，点击 Play。
+这是基于工程现有 ArchVis `SampleLevel` 制作的固定关卡。建筑、树木、草地、灯光、玩家、交互点与人物训练靶均已保存在地图中，未开始 Play 时也可查看和编辑。GameMode 不再生成环境模型。
+原始 `/Game/ArchVis/SampleScene/SampleLevel` 保留供参考；旧 `/Game/Maps/Prototype` 不再作为默认地图。
 建议使用至少 1000×650 的游戏视口，或全屏/新窗口运行。
 测试区域有可见碰撞边界；角色意外掉到地面下方时会自动回到出生点，避免只看到天空和黑色背景。
 当前实现为**单人原型**，远程/联机命令会被拒绝；尚未实现多玩家身份与状态复制。
 
 ## 操作
+
+### 在编辑器中修改场景
+
+1. 打开 `Content/Maps/ArchVisWorld`，无需运行游戏即可看到整个场景。
+2. 大纲 `ArchVis/OriginalScene` 中是现成建筑、树木、地面和灯光，可直接移动、旋转、缩放或替换材质。
+3. `Gameplay/Player` 放置玩家 Manny 与出生点；`Gameplay/Training` 放置三个人物训练靶；`Gameplay/Services` 放置五个服务交互点。
+4. `Content/Blueprints/BP_VWPlayer`、`BP_TrainingMannequin`、`BP_ServiceBeacon` 分别用于调整玩家、训练靶和服务点模型。服务点的 `Action` 与 `Display Label` 可在详情中设置。
+5. `Gameplay/Navigation` 中的盒体仅用于战略小队绕障，不阻挡玩家走入建筑。修改场地范围或建筑位置后同步调整对应盒体；`VWNavigationObstacle` 标签用于识别障碍。
+6. 场景改动保存关卡即可，不需要重新编译 C++。移动、射击、经济与运行时招募的小队仍由游戏逻辑驱动。
+
+### 游戏操作
 
 | 按键/操作 | 功能 |
 |---|---|
@@ -68,7 +80,7 @@
 - `VWPersistence.cpp` / `VWWorldSave.h`：USaveGame 快照，完整验证后原子替换世界状态。
 - `VWPlayerController.cpp` / `VWHUD.cpp`：输入、UI 命令、选中 ID 和查询展示；UI 不直接修改领域状态。
 - `VWCharacter.cpp`：视角、移动、射击/弹药、交互、跌落伤害。
-- `VWGameMode.cpp`：测试场景与领域数据的简单表现；不承担经济模拟。
+- `VWGameMode.cpp`：读取关卡中带 `VWNavigationObstacle` 标签的障碍物，以及同步运行时小队/设施状态；不生成固定场景，不承担经济模拟。
 - 经济/军事实体为数据。每个小队是 5 名士兵的聚合状态，不创建 5 个永久 Character。
 
 UE 自动化测试路径为 `VirtualWorld.Domain`：

@@ -43,5 +43,6 @@ Desktop.ini
 guide.md
 virtual world.md
 *.uasset
+!vw_ue/Content/Blueprints/*.uasset
 # Keep project source assets and settings tracked:
 # Config/, Content/, Source/, Plugins/, *.uproject
