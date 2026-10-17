@@ -104,16 +104,40 @@ bool UVWDomainWorldSubsystem::ExecuteCommand(const FVWCommand& Command, FString&
  {
  case EVWCommandType::Recruit:
  {
-  if (State.Units.Num() >= 20) { Message = TEXT("Prototype limit: 20 squads."); break; }
+  const int32 FriendlyCount=State.Units.FilterByPredicate([](const auto& U){return !U.bHostile;}).Num();
+  if (FriendlyCount >= 20 || State.Units.Num()>=40) { Message = TEXT("Prototype limit: 20 friendly squads."); break; }
   if (!Pay(60000, State.NationId.IsValid(), TEXT("RecruitSquad"), Message)) break;
   FVWMilitaryUnitState Unit; Unit.Id = FGuid::NewGuid();
   Unit.Owner = State.NationId.IsValid() ? State.NationId : State.PlayerId;
-  Unit.Name = FString::Printf(TEXT("Squad %d"), State.Units.Num() + 1);
+  Unit.Name = FString::Printf(TEXT("Squad %d"), FriendlyCount + 1);
+  Unit.HitPoints=500.f;
   Unit.bContinuousPosition = true;
-  const int32 Slot = State.Units.Num();
+  const int32 Slot = FriendlyCount;
   Unit.Position = FVector((Slot%3-1)*300,(Slot/3)*320-80,-5);
   Unit.Destination = Unit.Position;
   State.Units.Add(Unit); Message = TEXT("Five soldiers recruited. Select their marker on the map."); bSuccess = true; break;
+ }
+ case EVWCommandType::AttackUnit:
+ {
+  const auto* Enemy=FindSquad(Command.TargetUnitId);
+  if (!Enemy || !Enemy->bHostile || Enemy->Soldiers<=0 || Command.Units.IsEmpty())
+  { Message=TEXT("Select friendly squads and a living enemy target."); break; }
+  for (FGuid Id:Command.Units)
+  {
+   const auto* Unit=FindSquad(Id);
+   if (!Unit || Unit->bHostile || Unit->Soldiers<=0 ||
+       (!(Unit->Owner==State.PlayerId) && !(State.bPresident && State.NationId.IsValid() && Unit->Owner==State.NationId)))
+   { Message=TEXT("You do not command all selected squads."); return false; }
+  }
+  const FVector TargetPosition=Enemy->Position;
+  const auto Before=State.Units;
+  for (auto& Unit:State.Units) if (Command.Units.Contains(Unit.Id))
+  {
+   Unit.AttackTargetId=Command.TargetUnitId;
+   if (!PursueSquad(Unit.Id,TargetPosition))
+   { State.Units=Before; Message=TEXT("No route to engage this enemy."); return false; }
+  }
+  Message=TEXT("Attack order: squads advance, fire in range and use cover checks."); bSuccess=true; break;
  }
  case EVWCommandType::MoveUnit:
  {
@@ -141,13 +165,14 @@ bool UVWDomainWorldSubsystem::ExecuteCommand(const FVWCommand& Command, FString&
    Unit.Destination = Unit.Waypoints.Last();
    Unit.Target = FIntPoint(FMath::RoundToInt(Unit.Destination.X/1000),FMath::RoundToInt(Unit.Destination.Y/1000));
    Unit.bMoving = true;
+   Unit.AttackTargetId.Invalidate();
   }
   Message = TEXT("Move / capture order issued."); bSuccess = true; break;
  }
  case EVWCommandType::FoundNation:
  {
   if (State.NationId.IsValid()) { Message = TEXT("A nation already exists."); break; }
-  int32 Soldiers = 0; for (const auto& U : State.Units) Soldiers += U.Soldiers;
+  int32 Soldiers = 0; for (const auto& U : State.Units) if (!U.bHostile) Soldiers += U.Soldiers;
   if (ControlledCellCount() < 3 || Soldiers < 5 ||
       !OwnsCell(State.Cells.FindChecked(FIntPoint(2, 0))))
   { Message = TEXT("Need 3 controlled cells, 5 soldiers and the frontier tribe."); break; }
@@ -193,7 +218,7 @@ void UVWDomainWorldSubsystem::AdvanceSimulation()
   Unit.Position = NextPosition;
   Unit.Cell = Next; Cell->bDisputed = false;
   if (FVector::Dist2D(Unit.Position,Unit.Waypoints[0])<1.f) Unit.Waypoints.RemoveAt(0);
-  if (!(Cell->ControlledBy == Unit.Owner))
+  if (!Unit.bHostile && !(Cell->ControlledBy == Unit.Owner))
   {
    Cell->ControlledBy = Unit.Owner;
    EmitEvent(TEXT("TerritoryChanged"), FString::Printf(TEXT("%s secured (%d, %d)."), *Unit.Name, Next.X, Next.Y));
@@ -205,7 +230,7 @@ void UVWDomainWorldSubsystem::AdvanceSimulation()
 FString UVWDomainWorldSubsystem::Objective() const
 {
  if (!State.bRifle) return TEXT("01  Buy a rifle ($400) and try the shooting range.");
- if (State.Units.IsEmpty()) return TEXT("02  Recruit five soldiers ($600), then open the map [M].");
+ if (!State.Units.ContainsByPredicate([](const auto& U){return !U.bHostile && U.Soldiers>0;})) return TEXT("02  Recruit five soldiers ($600), then open the map [M].");
  if (!OwnsCell(State.Cells.FindChecked(FIntPoint(2, 0)))) return TEXT("03  Select Squad 1. Right-click the frontier tribe (2,0).");
  if (!State.NationId.IsValid()) return TEXT("04  Found a nation: 3 cells, 5 soldiers, $1000 capital.");
  if (!State.bPresident) return TEXT("Office revoked after death. Personal assets and nation persist.");

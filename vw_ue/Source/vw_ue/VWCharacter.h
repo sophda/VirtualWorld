@@ -7,6 +7,7 @@
 class UCameraComponent;
 class USpringArmComponent;
 class UStaticMeshComponent;
+class UVWCombatComponent;
 
 UCLASS()
 class VW_UE_API AVWCharacter : public ACharacter
@@ -15,6 +16,7 @@ class VW_UE_API AVWCharacter : public ACharacter
 
 public:
 	AVWCharacter();
+ UPROPERTY(VisibleAnywhere,BlueprintReadOnly,Category="Combat") TObjectPtr<UVWCombatComponent> Combat;
 	virtual void SetupPlayerInputComponent(UInputComponent* PlayerInputComponent) override;
  virtual void Tick(float DeltaSeconds) override;
 

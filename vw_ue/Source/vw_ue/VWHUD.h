@@ -13,6 +13,7 @@ public:
  bool CellAt(FVector2D Point, FIntPoint& Cell) const;
  bool WorldAt(FVector2D Point,FVector& Position) const;
  void ZoomMap(float Amount);
+ FGuid EnemyAt(FVector2D Point) const;
 private:
  struct FButton { FBox2D Bounds; int32 Action; };
  TArray<FButton> Buttons;

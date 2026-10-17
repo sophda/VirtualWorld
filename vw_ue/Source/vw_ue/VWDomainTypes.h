@@ -30,7 +30,7 @@ UENUM(BlueprintType)
 enum class EVWCommandType : uint8
 {
  Work, BuyRifle, Recruit, MoveUnit, FoundNation, Survey, BuildMine, BuildSteelworks,
- BuildFactory, BuildRoad, Donate, BuyHouse, EarnLicense, Heal, Save, Load
+ BuildFactory, BuildRoad, Donate, BuyHouse, EarnLicense, Heal, Save, Load, AttackUnit
 };
 USTRUCT(BlueprintType)
 struct FVWAccountState
@@ -82,6 +82,10 @@ struct FVWMilitaryUnitState
  UPROPERTY() FVector Position = FVector::ZeroVector;
  UPROPERTY() FVector Destination = FVector::ZeroVector;
  UPROPERTY() TArray<FVector> Waypoints;
+ UPROPERTY() bool bHostile = false;
+ // -1 migrates old saves using the surviving soldier count.
+ UPROPERTY() float HitPoints = -1.f;
+ UPROPERTY() FGuid AttackTargetId;
 };
 USTRUCT(BlueprintType)
 struct FVWDomainEvent
@@ -136,4 +140,5 @@ struct FVWCommand
  UPROPERTY() TArray<FGuid> Units;
  UPROPERTY() bool bWorldDestination = false;
  UPROPERTY() FVector Destination = FVector::ZeroVector;
+ UPROPERTY() FGuid TargetUnitId;
 };

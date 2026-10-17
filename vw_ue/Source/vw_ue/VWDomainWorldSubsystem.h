@@ -30,6 +30,11 @@ public:
  void ReloadWeapon();
  void RegisterTrainingKill();
  void DamagePlayer(float Damage);
+ void RegisterEnemySquad(FGuid Id,const FString& Name,FVector Position,int32 Soldiers);
+ float DamageSquad(FGuid Id,float Damage);
+ void StopSquad(FGuid Id,bool ClearTarget=false);
+ bool PursueSquad(FGuid Id,FVector TargetPosition);
+ const FVWMilitaryUnitState* FindSquad(FGuid Id) const;
  bool RestoreSnapshot(const FVWWorldSnapshot& Snapshot, FString& Error);
  static bool ValidateSnapshot(const FVWWorldSnapshot& Snapshot, FString& Error);
  void SetCharacterLocation(const FVector& Location);

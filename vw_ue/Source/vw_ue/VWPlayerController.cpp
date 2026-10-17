@@ -90,7 +90,9 @@ void AVWPlayerController::OrderAtCursor()
  if (HUD && Domain && GetMousePosition(X,Y) && HUD->WorldAt(FVector2D(X,Y),Destination))
  {
   SelectedCell = FIntPoint(FMath::RoundToInt(Destination.X/1000),FMath::RoundToInt(Destination.Y/1000));
-  FVWCommand Command; Command.Type=EVWCommandType::MoveUnit; Command.Issuer=Domain->GetPlayerSubjectId();
+  FVWCommand Command; Command.TargetUnitId=HUD->EnemyAt(FVector2D(X,Y));
+  Command.Type=Command.TargetUnitId.IsValid()?EVWCommandType::AttackUnit:EVWCommandType::MoveUnit;
+  Command.Issuer=Domain->GetPlayerSubjectId();
   Command.Cell=SelectedCell; Command.Units=SelectedUnits; Command.bWorldDestination=true; Command.Destination=Destination;
   bFeedbackSuccess=Domain->ExecuteCommand(Command,Feedback);
  }

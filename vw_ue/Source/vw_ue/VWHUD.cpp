@@ -109,7 +109,9 @@ void AVWHUD::DrawHUD()
  DrawRect(FLinearColor(0.025f,0.045f,0.07f,0.97f),0,100,W,H-165);
  DrawRect(FLinearColor(0.04f,0.075f,0.10f),16,112,292,H-188);
  DrawText(TEXT("COMMAND CENTER"),Accent,28,124);
- DrawText(FString::Printf(TEXT("CONTROL %d areas | %d squads"),Domain->ControlledCellCount(),S.Units.Num()),Ink,28,152,nullptr,0.9f);
+ const int32 Friends=S.Units.FilterByPredicate([](const auto& U){return !U.bHostile && U.Soldiers>0;}).Num();
+ const int32 Enemies=S.Units.FilterByPredicate([](const auto& U){return U.bHostile && U.Soldiers>0;}).Num();
+ DrawText(FString::Printf(TEXT("FRIEND %d squads | ENEMY %d"),Friends,Enemies),Ink,28,152,nullptr,0.9f);
  DrawText(FString::Printf(TEXT("IRON %d   COAL %d   STEEL %d"),S.Iron,S.Coal,S.Steel),Muted,28,175,nullptr,0.85f);
  DrawText(FString::Printf(TEXT("GDP $%.2f | TAX $%.2f / day"),S.GDP/100.0,S.LastTax/100.0),Muted,28,198,nullptr,0.85f);
  DrawText(S.bPresident ? TEXT("OFFICE: PRESIDENT") : TEXT("OFFICE: NONE"),S.bPresident ? Accent : Muted,28,221,nullptr,0.8f);
@@ -127,7 +129,7 @@ void AVWHUD::DrawHUD()
  Button(PC->bTerritoryLayer ? TEXT("Control ON") : TEXT("Control OFF"),28,505,128,-3);
  Button(TEXT("Load F9"),164,505,128,static_cast<int32>(EVWCommandType::Load));
  DrawText(TEXT("LMB select location/squad | Drag to select squads"),Muted,330,114,nullptr,0.85f);
- DrawText(*FString::Printf(TEXT("Wheel zoom %.0f%% | RMB move / capture"),MapZoom*100.f),Muted,330,137,nullptr,0.85f);
+ DrawText(*FString::Printf(TEXT("Wheel %.0f%% | RMB red enemy: ATTACK | RMB ground: MOVE"),MapZoom*100.f),Muted,330,137,nullptr,0.85f);
  const float BaseSize = FMath::Max(8.f, FMath::Min((W-365.f)/11.f,(H-290.f)/11.f));
  CellSize = BaseSize * MapZoom;
  MapBounds = FBox2D(FVector2D(330,165),FVector2D(330+BaseSize*11,165+BaseSize*11));
@@ -177,8 +179,16 @@ void AVWHUD::DrawHUD()
  if (PC->bMilitaryLayer)
  for (const auto& Unit:S.Units)
  {
+  if (Unit.Soldiers<=0) continue;
   const FVector2D P=MapPoint(Unit.Position);
-  const bool Selected=PC->GetSelectedUnits().Contains(Unit.Id);
+  const bool Selected=!Unit.bHostile && PC->GetSelectedUnits().Contains(Unit.Id);
+  const FLinearColor UnitColor=Unit.bHostile?FLinearColor(1.f,0.22f,0.16f):(Selected?Accent:Ink);
+  if (Selected && Unit.AttackTargetId.IsValid())
+   if (const auto* Enemy=Domain->FindSquad(Unit.AttackTargetId))
+   {
+    const FVector2D Target=MapPoint(Enemy->Position);
+    MapLine(P.X,P.Y,Target.X,Target.Y,FLinearColor(1.f,0.35f,0.2f),2);
+   }
   if (Unit.bMoving)
   {
    FVector2D Previous=P;
@@ -190,8 +200,8 @@ void AVWHUD::DrawHUD()
    }
    Disc(MapPoint(Unit.Destination),3,Selected?Accent:Muted);
   }
-  Disc(P,Selected?7.f:5.f,Selected?Accent:Ink);
-  MapText(FString::Printf(TEXT("%s (%d)"),*Unit.Name,Unit.Soldiers),Ink,P.X+9,P.Y-7,0.7f);
+  Disc(P,Selected?7.f:6.f,UnitColor);
+  MapText(FString::Printf(TEXT("%s%s (%d) %.0f HP"),Unit.bHostile?TEXT("ENEMY "):TEXT(""),*Unit.Name,Unit.Soldiers,Unit.HitPoints<0?Unit.Soldiers*100.f:Unit.HitPoints),UnitColor,P.X+9,P.Y-7,0.7f);
  }
  const auto* Selected = S.Cells.Find(PC->GetSelectedCell());
  if (Selected)
@@ -242,13 +252,26 @@ void AVWHUD::PointerReleased()
  FBox2D Bounds(FVector2D(FMath::Min(End.X,DragStart.X),FMath::Min(End.Y,DragStart.Y)),
                FVector2D(FMath::Max(End.X,DragStart.X),FMath::Max(End.Y,DragStart.Y)));
  for (const auto& Unit : Domain->GetSnapshot().Units)
-  if (MapBounds.IsInside(MapPoint(Unit.Position)) && (Box ? Bounds.IsInside(MapPoint(Unit.Position)) : FVector2D::Distance(MapPoint(Unit.Position),End)<14.f)) Selection.Add(Unit.Id);
+  if (!Unit.bHostile && Unit.Soldiers>0 && MapBounds.IsInside(MapPoint(Unit.Position)) && (Box ? Bounds.IsInside(MapPoint(Unit.Position)) : FVector2D::Distance(MapPoint(Unit.Position),End)<14.f)) Selection.Add(Unit.Id);
  PC->SelectUnits(Selection);
 }
 
 FVector2D AVWHUD::MapPoint(const FVector& Position) const
 {
  return MapOrigin+FVector2D(Position.X/1000+5.5,5.5-Position.Y/1000)*CellSize;
+}
+FGuid AVWHUD::EnemyAt(FVector2D Point) const
+{
+ if (!MapBounds.bIsValid || !MapBounds.IsInside(Point)) return FGuid();
+ const auto* Domain=GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
+ float Best=18.f; FGuid Result;
+ if (Domain) for (const auto& Unit:Domain->GetSnapshot().Units)
+ {
+  const float Distance=FVector2D::Distance(MapPoint(Unit.Position),Point);
+  if (Unit.bHostile && Unit.Soldiers>0 && Distance<Best)
+  { Result=Unit.Id; Best=Distance; }
+ }
+ return Result;
 }
 bool AVWHUD::WorldAt(FVector2D Point,FVector& Position) const
 {

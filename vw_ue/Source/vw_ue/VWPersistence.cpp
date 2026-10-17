@@ -7,7 +7,7 @@ bool UVWDomainWorldSubsystem::ValidateSnapshot(const FVWWorldSnapshot& S, FStrin
 {
  auto Fail = [&](const TCHAR* Why) { Error = Why; return false; };
  if (S.Version != 1 || !S.PlayerId.IsValid() || !S.RivalId.IsValid() || S.Cells.Num() != 121 ||
-     S.Units.Num() > 20 || S.Events.Num() > 256 || S.Transactions.Num() > 1024 ||
+     S.Units.Num() > 40 || S.Events.Num() > 256 || S.Transactions.Num() > 1024 ||
      S.Accounts.Num() > 32 || S.SimulationSecond < 0 || S.SimulationSecond > MAX_int32 - 100 ||
      S.LastWorkSecond > S.SimulationSecond || S.LastWorkSecond < -10)
   return Fail(TEXT("Invalid or incompatible snapshot."));
@@ -40,10 +40,14 @@ bool UVWDomainWorldSubsystem::ValidateSnapshot(const FVWWorldSnapshot& S, FStrin
  TSet<FGuid> Ids;
  for (const auto& U : S.Units)
  {
-  if (!U.Id.IsValid() || Ids.Contains(U.Id) || U.Soldiers < 1 || U.Soldiers > 100 ||
+  if (!U.Id.IsValid() || Ids.Contains(U.Id) || U.Soldiers < 0 || U.Soldiers > 100 ||
       !S.Cells.Contains(U.Cell) || !S.Cells.Contains(U.Target) ||
-      (!(U.Owner == S.PlayerId) && !(S.NationId.IsValid() && U.Owner == S.NationId)))
+      (U.bHostile ? !(U.Owner==S.RivalId) : (!(U.Owner == S.PlayerId) && !(S.NationId.IsValid() && U.Owner == S.NationId))))
    return Fail(TEXT("Invalid military unit."));
+  if (!FMath::IsFinite(U.HitPoints) || U.HitPoints < -1.f || U.HitPoints>10000.f ||
+      (U.HitPoints>=0 && FMath::CeilToInt(U.HitPoints/100.f)!=U.Soldiers) ||
+      (U.Soldiers==0 && (U.bMoving || U.HitPoints!=0)))
+   return Fail(TEXT("Invalid squad health."));
   if (U.bContinuousPosition)
   {
    if (U.Position.ContainsNaN() || U.Destination.ContainsNaN() || U.Waypoints.Num()>512 ||

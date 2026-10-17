@@ -4,6 +4,7 @@
 #include "Engine/World.h"
 #include "Misc/AutomationTest.h"
 #include "Kismet/GameplayStatics.h"
+#include <limits>
 #if WITH_DEV_AUTOMATION_TESTS
 namespace
 {
@@ -169,4 +170,40 @@ bool FVWNavigationTest::RunTest(const FString& Parameters)
  return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWSquadCombatTest,"VirtualWorld.Domain.SquadCombat",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FVWSquadCombatTest::RunTest(const FString& Parameters)
+{
+ FDomainFixture F; FString Message;
+ F.Command(EVWCommandType::Recruit); F.Command(EVWCommandType::Recruit);
+ const FGuid A=F.Domain->GetSnapshot().Units[0].Id,B=F.Domain->GetSnapshot().Units[1].Id;
+ const FGuid EnemyA=FGuid::NewGuid(),EnemyB=FGuid::NewGuid();
+ F.Domain->RegisterEnemySquad(EnemyA,TEXT("Red A"),FVector(1800,-1800,-5),5);
+ F.Domain->RegisterEnemySquad(EnemyB,TEXT("Red B"),FVector(1800,-3000,-5),5);
+ FVWCommand C; C.Type=EVWCommandType::AttackUnit; C.Issuer=F.Domain->GetPlayerSubjectId();
+ C.Units={A}; C.TargetUnitId=EnemyA;
+ TestTrue(TEXT("Attack order accepted"),F.Domain->ExecuteCommand(C,Message));
+ C.Units={B}; C.TargetUnitId=EnemyB;
+ TestTrue(TEXT("Independent second target accepted"),F.Domain->ExecuteCommand(C,Message));
+ TestEqual(TEXT("First squad keeps its own target"),F.Domain->FindSquad(A)->AttackTargetId,EnemyA);
+ TestEqual(TEXT("Second squad has a different target"),F.Domain->FindSquad(B)->AttackTargetId,EnemyB);
+ C.Units={EnemyA}; C.TargetUnitId=EnemyB;
+ TestFalse(TEXT("Cannot command enemy units"),F.Domain->ExecuteCommand(C,Message));
+ C.Units={A}; C.TargetUnitId=B;
+ TestFalse(TEXT("Cannot order friendly fire"),F.Domain->ExecuteCommand(C,Message));
+ TestEqual(TEXT("Damage applied"),F.Domain->DamageSquad(EnemyA,134.f),134.f);
+ TestEqual(TEXT("Casualties remove a soldier"),F.Domain->FindSquad(EnemyA)->Soldiers,4);
+ TestEqual(TEXT("Partial soldier damage retained"),F.Domain->FindSquad(EnemyA)->HitPoints,366.f);
+ TestEqual(TEXT("Overkill is clamped"),F.Domain->DamageSquad(EnemyA,1000.f),366.f);
+ TestEqual(TEXT("Eliminated squad has no soldiers"),F.Domain->FindSquad(EnemyA)->Soldiers,0);
+ TestEqual(TEXT("Dead squad takes no further damage"),F.Domain->DamageSquad(EnemyA,10.f),0.f);
+ TestEqual(TEXT("Reject non-finite damage"),F.Domain->DamageSquad(B,std::numeric_limits<float>::quiet_NaN()),0.f);
+ auto Snapshot=F.Domain->GetSnapshot();
+ TestTrue(TEXT("Enemies and casualties survive snapshot restore"),F.Domain->RestoreSnapshot(Snapshot,Message));
+ TestEqual(TEXT("Enemy remains dead after restore"),F.Domain->FindSquad(EnemyA)->HitPoints,0.f);
+ F.Command(EVWCommandType::MoveUnit,FIntPoint(0,1),{A});
+ TestFalse(TEXT("Move order cancels explicit attack"),F.Domain->FindSquad(A)->AttackTargetId.IsValid());
+ Snapshot.Units[0].HitPoints=1;
+ TestFalse(TEXT("Reject inconsistent health and soldier count"),F.Domain->RestoreSnapshot(Snapshot,Message));
+ return true;
+}
 #endif

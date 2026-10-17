@@ -56,9 +56,13 @@ void AVWGameMode::RefreshPresentation()
   ActiveSquads.Add(Unit.Id);
   const FVector Position = Unit.Position;
   auto& Visual = SquadVisuals.FindOrAdd(Unit.Id);
+  if (!IsValid(Visual))
+   for (TActorIterator<AVWSquadVisual> It(GetWorld());It;++It)
+    if (It->SquadId==Unit.Id) { Visual=*It; break; }
   if (!IsValid(Visual)) Visual = GetWorld()->SpawnActor<AVWSquadVisual>(Position,FRotator::ZeroRotator);
   if (Visual)
   {
+   Visual->ConfigureCombat(Unit);
    const FVector Facing = Unit.Waypoints.IsEmpty() ? FVector::ZeroVector : Unit.Waypoints[0]-Position;
    Visual->UpdateSquad(Unit.Name,Unit.Soldiers,Position,Unit.bMoving ? Facing : FVector::ZeroVector);
   }

@@ -16,11 +16,14 @@
 #include "Kismet/GameplayStatics.h"
 #include "DrawDebugHelpers.h"
 #include "InputCoreTypes.h"
+#include "VWCombatComponent.h"
 
 AVWCharacter::AVWCharacter()
 {
  PrimaryActorTick.bCanEverTick = true;
+ Combat=CreateDefaultSubobject<UVWCombatComponent>(TEXT("Combat"));
  GetCapsuleComponent()->InitCapsuleSize(42.f,96.f);
+ GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Visibility,ECR_Block);
  GetCharacterMovement()->MaxWalkSpeed = 520.f;
  GetCharacterMovement()->JumpZVelocity = 500.f; GetCharacterMovement()->AirControl = 0.35f;
  bUseControllerRotationYaw = true; GetCharacterMovement()->bOrientRotationToMovement = false;
@@ -134,20 +137,12 @@ void AVWCharacter::FireWeapon()
 {
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
  auto* PC = Cast<AVWPlayerController>(Controller);
- if (!Domain || !PC) return;
+ if (!Domain || !PC || !Combat->CanFire()) return;
  if (!Domain->ConsumeRound())
  { PC->Feedback = TEXT("Buy a rifle [B], or reload [R] / buy ammo [H]."); PC->bFeedbackSuccess = false; return; }
  FVector Origin; FRotator Aim; PC->GetPlayerViewPoint(Origin,Aim);
- const FVector End = Origin + Aim.Vector()*10000;
- FCollisionQueryParams Params(SCENE_QUERY_STAT(VWRifle),false,this);
- FHitResult Hit; GetWorld()->LineTraceSingleByChannel(Hit,Origin,End,ECC_Visibility,Params);
- DrawDebugLine(GetWorld(),Origin+Aim.Vector()*50,Hit.bBlockingHit ? Hit.ImpactPoint : End,FColor(120,255,210),false,0.15f,0,1.f);
- if (Hit.GetActor())
- {
-  const float Damage = UGameplayStatics::ApplyPointDamage(Hit.GetActor(),34.f,Aim.Vector(),Hit,PC,this,nullptr);
-  PC->Feedback = Damage > 0 ? TEXT("Hit confirmed.") : TEXT("Shot impacted scenery.");
- }
- else PC->Feedback = TEXT("Shot fired.");
+ const float Damage=Combat->FireShot(Origin,Aim.Vector(),PC);
+ PC->Feedback=Damage>0?TEXT("Hit confirmed."):TEXT("Shot fired / cover hit.");
  PC->bFeedbackSuccess = true;
 }
 void AVWCharacter::Reload()
@@ -170,10 +165,14 @@ float AVWCharacter::TakeDamage(float Damage, const FDamageEvent& Event, AControl
 {
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
  if (!Domain || GetNetMode()!=NM_Standalone || Damage<=0 || !FMath::IsFinite(Damage)) return 0;
+ if (Causer)
+  if (const auto* Other=Causer->FindComponentByClass<UVWCombatComponent>())
+   if (Other->Team==Combat->Team) return 0;
+ const float Applied=FMath::Min(Damage,Domain->GetSnapshot().Health);
  const bool Died = Damage >= Domain->GetSnapshot().Health;
  Domain->DamagePlayer(Damage);
  if (Died) { SetActorLocation(FVector(0,0,120),false,nullptr,ETeleportType::TeleportPhysics); GetCharacterMovement()->StopMovementImmediately(); }
- return Damage;
+ return Applied;
 }
 void AVWCharacter::Landed(const FHitResult& Hit)
 {
