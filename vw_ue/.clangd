@@ -1,0 +1,24 @@
+CompileFlags:
+  # UE 工程里有大量 MSVC 专有参数与宏，屏蔽 Clang 不认识的告警
+  Remove:
+    - /Zc:*
+    - /permissive-*
+    - /external:*
+    - /MP*
+    - /FS
+    - /GL
+    - /Gy
+    - /Oi
+    - /guard:*
+    - /sourceDependencies*
+    - /Fd*
+    - /bigobj
+    - /utf-8
+  Add:
+    - -Wno-everything
+
+Diagnostics:
+  # 只需要跳转/补全，不需要 UE 的 MSVC 语义诊断
+  Suppress:
+    - "clang-diagnostic-error"
+    - "clang-diagnostic-warning"

@@ -1,5 +1,6 @@
 #include "VWStrategicCameraPawn.h"
 #include "Camera/CameraComponent.h"
+#include "Components/InputComponent.h"
 #include "Components/SceneComponent.h"
 #include "InputCoreTypes.h"
 #include "VWHUD.h"
