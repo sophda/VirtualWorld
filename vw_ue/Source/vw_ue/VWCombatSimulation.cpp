@@ -1,10 +1,12 @@
 #include "VWDomainWorldSubsystem.h"
 #include "VWNavigation.h"
 
+// 按 ID 查找小队状态，找不到时返回空指针。
 const FVWMilitaryUnitState* UVWDomainWorldSubsystem::FindSquad(FGuid Id) const
 {
  return State.Units.FindByPredicate([&](const auto& Unit){return Unit.Id==Id;});
 }
+// 在域状态中注册一支敌军小队，并校验 ID、位置与数量上限。
 void UVWDomainWorldSubsystem::RegisterEnemySquad(FGuid Id,const FString& Name,FVector Position,int32 Soldiers)
 {
  if (!HasAuthority() || !Id.IsValid() || FindSquad(Id) || State.Units.Num()>=40) return;
@@ -15,6 +17,7 @@ void UVWDomainWorldSubsystem::RegisterEnemySquad(FGuid Id,const FString& Name,FV
  if (!State.Cells.Contains(Unit.Cell)) return;
  State.Units.Add(Unit);
 }
+// 对小队造成伤害，按生命值换算剩余士兵数并处理全灭。
 float UVWDomainWorldSubsystem::DamageSquad(FGuid Id,float Damage)
 {
  if (!HasAuthority() || !FMath::IsFinite(Damage) || Damage<=0) return 0;
@@ -30,6 +33,7 @@ float UVWDomainWorldSubsystem::DamageSquad(FGuid Id,float Damage)
  }
  return Applied;
 }
+// 停止小队移动并清空路径，可选择同时清除攻击目标。
 void UVWDomainWorldSubsystem::StopSquad(FGuid Id,bool ClearTarget)
 {
  if (!HasAuthority()) return;
@@ -39,6 +43,7 @@ void UVWDomainWorldSubsystem::StopSquad(FGuid Id,bool ClearTarget)
   if (ClearTarget) Unit->AttackTargetId.Invalidate();
  }
 }
+// 尝试在目标周围寻找可通行的交战点，为小队规划追击路径。
 bool UVWDomainWorldSubsystem::PursueSquad(FGuid Id,FVector TargetPosition)
 {
  if (!HasAuthority() || TargetPosition.ContainsNaN()) return false;

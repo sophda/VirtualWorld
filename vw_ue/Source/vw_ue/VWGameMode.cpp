@@ -9,6 +9,7 @@
 #include "DrawDebugHelpers.h"
 #include "TimerManager.h"
 
+// 构造游戏模式并指定默认角色、玩家控制器与 HUD 类。
 AVWGameMode::AVWGameMode()
 {
  DefaultPawnClass = AVWCharacter::StaticClass();
@@ -16,6 +17,7 @@ AVWGameMode::AVWGameMode()
  HUDClass = AVWHUD::StaticClass();
  PrimaryActorTick.bCanEverTick = false;
 }
+// 收集带 VWNavigationObstacle 标签的障碍物，并启动表现层定时刷新。
 void AVWGameMode::BeginPlay()
 {
  Super::BeginPlay();
@@ -34,6 +36,7 @@ void AVWGameMode::BeginPlay()
   Domain->SetNavigationObstacles(Obstacles);
  World->GetTimerManager().SetTimer(PresentationTimer,this,&AVWGameMode::RefreshPresentation,0.5f,true);
 }
+// 定期把领域状态同步为场景中的小队模型与设施调试标记。
 void AVWGameMode::RefreshPresentation()
 {
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>(); if (!Domain) return;

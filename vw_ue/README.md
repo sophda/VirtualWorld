@@ -119,6 +119,8 @@ UE 自动化测试路径为 `VirtualWorld.Domain`：
 
 ## Unreal MCP
 
+地图鼠标操作：按 M 打开地图，滚轮放大后按住左键拖动浏览（全图比例限制平移，避免空白边缘）。按住右键拖框，松开后选择框内己方小队；右键单击己方小队可单选，单击空地向已选部队下达移动指令，单击红色敌军下达攻击指令。右键拖框不会发送移动或攻击命令；左键仍可点击侧栏按钮和选择区域。关闭地图会清除未结束的拖动状态。
+
 ### RiverValley 的 VSM 阴影开销
 
 林区的 17,816 个树木实例使用 `/Game/World/Valley/Meshes/SM_ValleyOak`，启用 Nanite 和 Preserve Area（树叶面积保留），植被类型为 `/Game/Foliage/Auto_HillTree_02`。树木使用独立的材质副本，原 ArchVis 树模型保持原设置。地形、远山和城镇房屋也启用 Nanite，避免大量非 Nanite 模型占用 VSM 标记队列。保留虚拟阴影贴图和森林数量，不提高队列上限或隐藏告警。

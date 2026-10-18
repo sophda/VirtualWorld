@@ -4,7 +4,9 @@
 #include "Engine/Canvas.h"
 #include "Engine/World.h"
 #include "Engine/Texture2D.h"
+#include "InputCoreTypes.h"
 
+// 构造 HUD 并指定默认地形纹理。
 AVWHUD::AVWHUD()
 {
  TerrainTexture=TSoftObjectPtr<UTexture2D>(FSoftObjectPath(TEXT("/Game/World/Valley/Textures/T_ValleyTactical.T_ValleyTactical")));
@@ -17,11 +19,12 @@ namespace
  const FLinearColor Accent(0.30f,0.85f,0.72f);
  const FLinearColor Amber(1.f,0.70f,0.30f);
 }
+// 根据滚轮输入缩放地图，并把鼠标位置作为缩放锚点。
 void AVWHUD::ZoomMap(float Amount)
 {
  auto* PC = Cast<AVWPlayerController>(PlayerOwner);
  float X,Y;
- if (!PC || !PC->IsStrategicMode() || bDragging || !MapBounds.bIsValid ||
+ if (!PC || !PC->IsStrategicMode() || bDragging || bPanning || !MapBounds.bIsValid ||
      !PC->GetMousePosition(X,Y) || !MapBounds.IsInside(FVector2D(X,Y))) return;
  const float NewZoom = FMath::Clamp(MapZoom*FMath::Pow(1.2f,Amount),1.f,8.f);
  const FVector2D Cursor(X,Y);
@@ -30,12 +33,14 @@ void AVWHUD::ZoomMap(float Amount)
  MapFocus = Anchor-(Cursor-MapBounds.GetCenter())/NewSize;
  MapZoom = NewZoom;
 }
+// 绘制矩形，并裁剪到地图边界内。
 void AVWHUD::MapRect(FLinearColor Color,float X,float Y,float Width,float Height)
 {
  const float Left=FMath::Max(X,float(MapBounds.Min.X)), Top=FMath::Max(Y,float(MapBounds.Min.Y));
  const float Right=FMath::Min(X+Width,float(MapBounds.Max.X)), Bottom=FMath::Min(Y+Height,float(MapBounds.Max.Y));
  if (Right>Left && Bottom>Top) DrawRect(Color,Left,Top,Right-Left,Bottom-Top);
 }
+// 绘制线段，并裁剪到地图边界内。
 void AVWHUD::MapLine(float X1,float Y1,float X2,float Y2,FLinearColor Color,float Thickness)
 {
  const FVector2D Start(X1,Y1), Delta(X2-X1,Y2-Y1);
@@ -56,16 +61,19 @@ void AVWHUD::MapLine(float X1,float Y1,float X2,float Y2,FLinearColor Color,floa
  const FVector2D A=Start+Delta*Near,B=Start+Delta*Far;
  DrawLine(A.X,A.Y,B.X,B.Y,Color,Thickness);
 }
+// 绘制文本，仅当文本完全位于地图范围内时显示。
 void AVWHUD::MapText(const FString& Text,FLinearColor Color,float X,float Y,float Scale)
 {
  float Width,Height; GetTextSize(Text,Width,Height,nullptr,Scale);
  if (X>=MapBounds.Min.X && Y>=MapBounds.Min.Y && X+Width<=MapBounds.Max.X && Y+Height<=MapBounds.Max.Y)
   DrawText(Text,Color,X,Y,nullptr,Scale);
 }
+// 计算战略格的屏幕中心坐标。
 FVector2D AVWHUD::CellCenter(FIntPoint Cell) const
 {
  return MapOrigin + FVector2D(Cell.X + 5.5f, 5.5f - Cell.Y) * CellSize;
 }
+// 把屏幕坐标转换为战略格坐标。
 bool AVWHUD::CellAt(FVector2D Point, FIntPoint& Cell) const
 {
  if (!MapBounds.bIsValid || !MapBounds.IsInside(Point)) return false;
@@ -73,6 +81,7 @@ bool AVWHUD::CellAt(FVector2D Point, FIntPoint& Cell) const
  if (Relative.X < 0 || Relative.Y < 0 || Relative.X >= 11 || Relative.Y >= 11) return false;
  Cell = FIntPoint(FMath::FloorToInt(Relative.X) - 5, 5 - FMath::FloorToInt(Relative.Y)); return true;
 }
+// 绘制命令按钮，记录点击区域并处理悬停高亮。
 void AVWHUD::Button(const FString& Label, float X, float Y, float Width, int32 Action)
 {
  float MX=0, MY=0; PlayerOwner->GetMousePosition(MX, MY);
@@ -82,6 +91,7 @@ void AVWHUD::Button(const FString& Label, float X, float Y, float Width, int32 A
  DrawText(Label, Hover ? Accent : Ink, X+9,Y+6,nullptr,0.85f);
  Buttons.Add({Bounds, Action});
 }
+// 绘制完整 HUD：顶部状态栏、命令面板、战略地图、单位、资源与交互提示。
 void AVWHUD::DrawHUD()
 {
  Super::DrawHUD();
@@ -103,6 +113,7 @@ void AVWHUD::DrawHUD()
   Muted,24,H-28,nullptr,0.8f);
  if (!PC->IsStrategicMode())
  {
+  CancelMapInteraction();
   DrawRect(FLinearColor(0.025f,0.045f,0.07f,0.85f),20,120,310,127);
   DrawText(FString::Printf(TEXT("HEALTH  %.0f     AMMO  %d / %d"),S.Health,S.Magazine,S.ReserveAmmo),Ink,34,136);
   DrawText(TEXT("WASD move | Mouse look | Space jump"),Muted,34,163,nullptr,0.85f);
@@ -134,11 +145,28 @@ void AVWHUD::DrawHUD()
  Button(PC->bMilitaryLayer ? TEXT("Military ON") : TEXT("Military OFF"),164,474,128,-2);
  Button(PC->bTerritoryLayer ? TEXT("Control ON") : TEXT("Control OFF"),28,505,128,-3);
  Button(TEXT("Load F9"),164,505,128,static_cast<int32>(EVWCommandType::Load));
- DrawText(TEXT("LMB select location/squad | Drag to select squads"),Muted,330,114,nullptr,0.85f);
- DrawText(*FString::Printf(TEXT("Wheel %.0f%% | RMB red enemy: ATTACK | RMB ground: MOVE"),MapZoom*100.f),Muted,330,137,nullptr,0.85f);
+ DrawText(TEXT("LMB drag: PAN | RMB drag: SELECT squads | RMB squad: SELECT"),Muted,330,114,nullptr,0.85f);
+ DrawText(*FString::Printf(TEXT("Wheel %.0f%% | RMB click enemy: ATTACK | RMB click ground: MOVE"),MapZoom*100.f),Muted,330,137,nullptr,0.85f);
  const float BaseSize = FMath::Max(8.f, FMath::Min((W-365.f)/11.f,(H-290.f)/11.f));
  CellSize = BaseSize * MapZoom;
  MapBounds = FBox2D(FVector2D(330,165),FVector2D(330+BaseSize*11,165+BaseSize*11));
+ float PointerX,PointerY;
+ if (PC->GetMousePosition(PointerX,PointerY))
+ {
+  const FVector2D Pointer(PointerX,PointerY);
+  if (bPanning)
+  {
+   MapFocus -= (Pointer-PanLast)/CellSize;
+   PanLast = Pointer;
+   if (!PC->IsInputKeyDown(EKeys::LeftMouseButton)) bPanning=false;
+  }
+  if (bDragging)
+  {
+   bBoxSelection |= FVector2D::Distance(DragStart,Pointer)>8.f;
+   if (!PC->IsInputKeyDown(EKeys::RightMouseButton)) CancelMapInteraction();
+  }
+ }
+ else CancelMapInteraction();
  const float HalfVisible = 5.5f/MapZoom;
  MapFocus.X = FMath::Clamp(MapFocus.X,HalfVisible,11.f-HalfVisible);
  MapFocus.Y = FMath::Clamp(MapFocus.Y,HalfVisible,11.f-HalfVisible);
@@ -231,6 +259,8 @@ void AVWHUD::DrawHUD()
  {
   float MX,MY; if (PC->GetMousePosition(MX,MY))
   {
+   MX=FMath::Clamp(MX,float(MapBounds.Min.X),float(MapBounds.Max.X));
+   MY=FMath::Clamp(MY,float(MapBounds.Min.Y),float(MapBounds.Max.Y));
    DrawLine(DragStart.X,DragStart.Y,MX,DragStart.Y,Accent);
    DrawLine(MX,DragStart.Y,MX,MY,Accent);
    DrawLine(MX,MY,DragStart.X,MY,Accent);
@@ -238,10 +268,11 @@ void AVWHUD::DrawHUD()
   }
  }
 }
+// 处理地图左键按下：命中按钮则执行对应操作，否则开始平移并选中格子。
 void AVWHUD::PointerPressed()
 {
  auto* PC = Cast<AVWPlayerController>(PlayerOwner); float X,Y;
- if (!PC || !PC->GetMousePosition(X,Y)) return;
+ if (!PC || bDragging || bPanning || !PC->GetMousePosition(X,Y)) return;
  const FVector2D Point(X,Y);
  for (const auto& B : Buttons) if (B.Bounds.IsInside(Point))
  {
@@ -252,9 +283,30 @@ void AVWHUD::PointerPressed()
   return;
  }
  FIntPoint Cell;
- if (CellAt(Point,Cell)) { DragStart = Point; bDragging = true; PC->SelectCell(Cell); }
+ if (CellAt(Point,Cell)) { PanLast = Point; bPanning = true; PC->SelectCell(Cell); }
 }
+// 处理左键释放：结束地图平移。
 void AVWHUD::PointerReleased()
+{
+ bPanning=false;
+}
+// 取消当前的地图平移、拖拽与框选状态。
+void AVWHUD::CancelMapInteraction()
+{
+ bPanning=false;
+ bDragging=false;
+ bBoxSelection=false;
+}
+// 处理右键按下：在地图范围内开始框选。
+void AVWHUD::SelectionPressed()
+{
+ auto* PC=Cast<AVWPlayerController>(PlayerOwner); float X,Y;
+ if (!PC || !PC->bMilitaryLayer || bPanning || bDragging || !PC->GetMousePosition(X,Y)) return;
+ if (!MapBounds.bIsValid || !MapBounds.IsInside(FVector2D(X,Y))) return;
+ DragStart=FVector2D(X,Y); bDragging=true; bBoxSelection=false;
+}
+// 处理右键释放：按框选结果选择小队，或对地面/敌军下达命令。
+void AVWHUD::SelectionReleased()
 {
  if (!bDragging) return;
  bDragging = false;
@@ -262,18 +314,22 @@ void AVWHUD::PointerReleased()
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>(); float X,Y;
  if (!PC || !Domain || !PC->GetMousePosition(X,Y) || !PC->bMilitaryLayer) return;
  FVector2D End(FMath::Clamp(X,MapBounds.Min.X,MapBounds.Max.X),FMath::Clamp(Y,MapBounds.Min.Y,MapBounds.Max.Y)); TArray<FGuid> Selection;
- const bool Box = FVector2D::Distance(DragStart,End)>8.f;
+ const bool Box = bBoxSelection || FVector2D::Distance(DragStart,FVector2D(X,Y))>8.f;
+ bBoxSelection=false;
  FBox2D Bounds(FVector2D(FMath::Min(End.X,DragStart.X),FMath::Min(End.Y,DragStart.Y)),
                FVector2D(FMath::Max(End.X,DragStart.X),FMath::Max(End.Y,DragStart.Y)));
  for (const auto& Unit : Domain->GetSnapshot().Units)
   if (!Unit.bHostile && Unit.Soldiers>0 && MapBounds.IsInside(MapPoint(Unit.Position)) && (Box ? Bounds.IsInside(MapPoint(Unit.Position)) : FVector2D::Distance(MapPoint(Unit.Position),End)<14.f)) Selection.Add(Unit.Id);
- PC->SelectUnits(Selection);
+ if (Box || !Selection.IsEmpty()) PC->SelectUnits(Selection);
+ else if (MapBounds.IsInside(FVector2D(X,Y))) PC->OrderAtCursor();
 }
 
+// 把世界坐标转换为地图屏幕坐标。
 FVector2D AVWHUD::MapPoint(const FVector& Position) const
 {
  return MapOrigin+FVector2D(Position.X/1000+5.5,5.5-Position.Y/1000)*CellSize;
 }
+// 查找屏幕坐标附近最近的敌军小队 ID。
 FGuid AVWHUD::EnemyAt(FVector2D Point) const
 {
  if (!MapBounds.bIsValid || !MapBounds.IsInside(Point)) return FGuid();
@@ -287,6 +343,7 @@ FGuid AVWHUD::EnemyAt(FVector2D Point) const
  }
  return Result;
 }
+// 把地图屏幕坐标转换为连续世界坐标。
 bool AVWHUD::WorldAt(FVector2D Point,FVector& Position) const
 {
  if (!MapBounds.bIsValid || !MapBounds.IsInside(Point)) return false;
@@ -295,6 +352,7 @@ bool AVWHUD::WorldAt(FVector2D Point,FVector& Position) const
  Position=FVector((P.X-5.5)*1000,(5.5-P.Y)*1000,-5);
  return true;
 }
+// 用逐行矩形拼出圆形标记，并裁剪到地图范围。
 void AVWHUD::Disc(FVector2D Center,float Radius,FLinearColor Color)
 {
  if (!MapBounds.bIsValid || Center.X+Radius<MapBounds.Min.X || Center.X-Radius>MapBounds.Max.X || Center.Y+Radius<MapBounds.Min.Y || Center.Y-Radius>MapBounds.Max.Y) return;

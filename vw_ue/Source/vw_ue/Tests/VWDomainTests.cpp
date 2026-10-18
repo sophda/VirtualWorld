@@ -12,18 +12,23 @@ namespace
  {
   UWorld* World = UWorld::CreateWorld(EWorldType::Game, false);
   UVWDomainWorldSubsystem* Domain = NewObject<UVWDomainWorldSubsystem>(World);
+  // 创建测试世界并初始化领域原型。
   FDomainFixture() { Domain->InitializePrototype(); }
+  // 销毁测试世界。
   ~FDomainFixture() { World->DestroyWorld(false); }
+  // 以玩家身份构造并执行一条命令。
   bool Command(EVWCommandType Type, FIntPoint Cell = FIntPoint::ZeroValue, TArray<FGuid> Units = {})
   {
    FVWCommand C; C.Type=Type; C.Issuer=Domain->GetPlayerSubjectId(); C.Cell=Cell; C.Units=Units;
    FString Message; return Domain->ExecuteCommand(C,Message);
   }
+  // 命令首支小队移动到指定格并推进模拟以完成占领。
   void Capture(FIntPoint Cell)
   {
    Command(EVWCommandType::MoveUnit,Cell,{Domain->GetSnapshot().Units[0].Id});
    for(int32 I=0; I<12; ++I) Domain->AdvanceSimulation();
   }
+  // 走完购枪、招募、占领与建国的完整前置流程。
   void Found()
   {
    Command(EVWCommandType::BuyRifle); Command(EVWCommandType::Recruit);
@@ -32,6 +37,7 @@ namespace
  };
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWProgressionTest,"VirtualWorld.Domain.ProgressionAndTreasury",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+// 验证从独立公民到建国的进度与国库资金流转。
 bool FVWProgressionTest::RunTest(const FString& Parameters)
 {
  FDomainFixture F;
@@ -50,6 +56,7 @@ bool FVWProgressionTest::RunTest(const FString& Parameters)
  return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWEconomyTest,"VirtualWorld.Domain.ProductionAndTax",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+// 验证勘测、建造、道路连通、生产与税收结算。
 bool FVWEconomyTest::RunTest(const FString& Parameters)
 {
  FDomainFixture F; F.Found(); F.Capture(FIntPoint(0,1));
@@ -84,6 +91,7 @@ bool FVWEconomyTest::RunTest(const FString& Parameters)
  return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWPersistenceTest,"VirtualWorld.Domain.SaveRoundtripAndDeath",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+// 验证存档序列化往返、死亡后的资产保留与非法快照拒绝。
 bool FVWPersistenceTest::RunTest(const FString& Parameters)
 {
  FDomainFixture F; F.Found();
@@ -115,6 +123,7 @@ bool FVWPersistenceTest::RunTest(const FString& Parameters)
  return true;
 }
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWValidationTest,"VirtualWorld.Domain.InvalidCommands",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+// 验证伪造发起者、重复工作、非法格子与非法单位等命令会被拒绝。
 bool FVWValidationTest::RunTest(const FString& Parameters)
 {
  FDomainFixture F; FString Message; const auto Original=F.Domain->GetSnapshot();
@@ -133,6 +142,7 @@ bool FVWValidationTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWNavigationTest,"VirtualWorld.Domain.ContinuousNavigation",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+// 验证连续坐标寻路、绕障、分段避障以及任意目标点的移动与存档。
 bool FVWNavigationTest::RunTest(const FString& Parameters)
 {
  TArray<FVector> Route;
@@ -171,6 +181,7 @@ bool FVWNavigationTest::RunTest(const FString& Parameters)
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVWSquadCombatTest,"VirtualWorld.Domain.SquadCombat",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+// 验证多小队独立攻击目标、敌方指挥拒绝、伤害与全灭的存档行为。
 bool FVWSquadCombatTest::RunTest(const FString& Parameters)
 {
  FDomainFixture F; FString Message;

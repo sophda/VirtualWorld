@@ -3,12 +3,14 @@
 #include "Engine/World.h"
 #include "TimerManager.h"
 
+// 判断当前是否为具备权威的独立运行模式。
 bool UVWDomainWorldSubsystem::HasAuthority() const
 {
  const UWorld* World = GetWorld();
  return World && World->GetNetMode() == NM_Standalone;
 }
 
+// 世界开始运行时初始化原型，并启动每秒推进一次的模拟计时器。
 void UVWDomainWorldSubsystem::OnWorldBeginPlay(UWorld& InWorld)
 {
  Super::OnWorldBeginPlay(InWorld);
@@ -16,11 +18,13 @@ void UVWDomainWorldSubsystem::OnWorldBeginPlay(UWorld& InWorld)
  InitializePrototype();
  InWorld.GetTimerManager().SetTimer(SimulationTimer, this, &UVWDomainWorldSubsystem::AdvanceSimulation, 1.f, true);
 }
+// 世界销毁时清除模拟计时器。
 void UVWDomainWorldSubsystem::Deinitialize()
 {
  if (GetWorld()) GetWorld()->GetTimerManager().ClearTimer(SimulationTimer);
  Super::Deinitialize();
 }
+// 创建初始世界：主体、账户、11x11 战略格、资源点与初始聚落。
 void UVWDomainWorldSubsystem::InitializePrototype()
 {
  if (!HasAuthority() || State.PlayerId.IsValid()) return;
@@ -50,6 +54,7 @@ void UVWDomainWorldSubsystem::InitializePrototype()
  State.Cells.FindChecked(FIntPoint(-2, -1)).Settlement = TEXT("West town");
  EmitEvent(TEXT("WorldInitialized"), TEXT("Independent citizen. Work, recruit and take the frontier."));
 }
+// 创建属于指定主体的账户并返回账户 ID。
 FVWAccountId UVWDomainWorldSubsystem::CreateAccount(const FVWSubjectId& Owner, const int64 InitialBalance)
 {
  FVWAccountState Account;
@@ -57,11 +62,13 @@ FVWAccountId UVWDomainWorldSubsystem::CreateAccount(const FVWSubjectId& Owner, c
  State.Accounts.Add(Account.Id.Value, Account);
  return Account.Id;
 }
+// 查询账户余额，账户不存在时返回 0。
 int64 UVWDomainWorldSubsystem::Balance(const FVWAccountId& Id) const
 {
  const auto* Account = State.Accounts.Find(Id.Value);
  return Account ? Account->BalanceMinorUnits : 0;
 }
+// 在两个账户间转账，成功后写入一条财务流水。
 bool UVWDomainWorldSubsystem::TransferFunds(const FVWAccountId& From, const FVWAccountId& To, int64 Amount, FName Reason)
 {
  if (!HasAuthority() || Amount <= 0 || From == To) return false;
@@ -77,6 +84,7 @@ bool UVWDomainWorldSubsystem::TransferFunds(const FVWAccountId& From, const FVWA
  if (State.Transactions.Num() > 1024) State.Transactions.RemoveAt(0);
  return true;
 }
+// 从个人账户或国库向市场支付费用，失败时写入提示。
 bool UVWDomainWorldSubsystem::Pay(int64 Cost, bool bTreasury, FName Reason, FString& Message)
 {
  if (bTreasury && (!State.NationId.IsValid() || !State.bPresident))
@@ -85,16 +93,19 @@ bool UVWDomainWorldSubsystem::Pay(int64 Cost, bool bTreasury, FName Reason, FStr
  { Message = bTreasury ? TEXT("Insufficient treasury funds.") : TEXT("Insufficient personal funds."); return false; }
  return true;
 }
+// 判断战略格是否由玩家本人或玩家所属国家控制。
 bool UVWDomainWorldSubsystem::OwnsCell(const FVWStrategicCell& Cell) const
 {
  return Cell.ControlledBy == State.PlayerId || (State.NationId.IsValid() && Cell.ControlledBy == State.NationId);
 }
+// 统计玩家/国家控制且无争议的战略格数量。
 int32 UVWDomainWorldSubsystem::ControlledCellCount() const
 {
  int32 Count = 0;
  for (const auto& Pair : State.Cells) if (OwnsCell(Pair.Value) && !Pair.Value.bDisputed) ++Count;
  return Count;
 }
+// 校验命令发起者并分派执行：招募、移动、建国、存读档及经济命令。
 bool UVWDomainWorldSubsystem::ExecuteCommand(const FVWCommand& Command, FString& Message)
 {
  if (!HasAuthority() || !State.PlayerId.IsValid() || !(Command.Issuer == State.PlayerId))
@@ -194,6 +205,7 @@ bool UVWDomainWorldSubsystem::ExecuteCommand(const FVWCommand& Command, FString&
  if (bSuccess) EmitEvent(TEXT("CommandCompleted"), Message);
  return bSuccess;
 }
+// 推进一秒模拟：单位沿路径移动、交战守军、占领格子并定期结算经济。
 void UVWDomainWorldSubsystem::AdvanceSimulation()
 {
  if (!HasAuthority() || !State.PlayerId.IsValid()) return;
@@ -227,6 +239,7 @@ void UVWDomainWorldSubsystem::AdvanceSimulation()
  }
  if (State.SimulationSecond % 10 == 0) SimulateEconomy();
 }
+// 根据当前进度返回下一步行动提示。
 FString UVWDomainWorldSubsystem::Objective() const
 {
  if (!State.bRifle) return TEXT("01  Buy a rifle ($400) and try the shooting range.");
@@ -246,6 +259,7 @@ FString UVWDomainWorldSubsystem::Objective() const
  if (!Factory) return TEXT("07  Build a factory. Final goods generate GDP and 20% tax.");
  return TEXT("08  Industry is running. Expand territory, roads and your army.");
 }
+// 追加一条领域事件、广播事件并输出日志。
 void UVWDomainWorldSubsystem::EmitEvent(FName Type, const FString& Details)
 {
  FVWDomainEvent Event; Event.EventId = FGuid::NewGuid(); Event.EventType = Type;
@@ -254,6 +268,7 @@ void UVWDomainWorldSubsystem::EmitEvent(FName Type, const FString& Details)
  OnDomainEvent.Broadcast(Event);
  UE_LOG(LogTemp, Display, TEXT("VW: %s"), *Details);
 }
+// 消耗一发子弹：检查持枪、弹匣与射击冷却。
 bool UVWDomainWorldSubsystem::ConsumeRound()
 {
  if (!HasAuthority() || !State.bRifle || State.Magazine <= 0 || State.Health <= 0.f) return false;
@@ -261,18 +276,21 @@ bool UVWDomainWorldSubsystem::ConsumeRound()
  if (Now - LastShotTime < 0.15) return false;
  LastShotTime = Now; --State.Magazine; return true;
 }
+// 记录一次训练靶击倒并广播进度。
 void UVWDomainWorldSubsystem::RegisterTrainingKill()
 {
  if (!HasAuthority()) return;
  ++State.TrainingKills;
  EmitEvent(TEXT("TrainingTargetDown"), FString::Printf(TEXT("Range score: %d / 3. Three targets qualify for the shooting exam."), State.TrainingKills));
 }
+// 用备弹补满弹匣。
 void UVWDomainWorldSubsystem::ReloadWeapon()
 {
  if (!HasAuthority() || !State.bRifle) return;
  const int32 Rounds = FMath::Min(30 - State.Magazine, State.ReserveAmmo);
  State.Magazine += Rounds; State.ReserveAmmo -= Rounds;
 }
+// 扣除玩家生命；生命归零时重生并撤销总统职务。
 void UVWDomainWorldSubsystem::DamagePlayer(float Damage)
 {
  if (!HasAuthority() || !FMath::IsFinite(Damage) || Damage <= 0) return;
@@ -283,11 +301,13 @@ void UVWDomainWorldSubsystem::DamagePlayer(float Damage)
   EmitEvent(TEXT("PlayerDied"), TEXT("Respawned. Wallet, house and license retained; political office revoked."));
  }
 }
+// 记录角色当前位置供存档使用。
 void UVWDomainWorldSubsystem::SetCharacterLocation(const FVector& Location)
 {
  if (HasAuthority() && !Location.ContainsNaN()) State.CharacterLocation = Location;
 }
 
+// 更新导航障碍物，并为正在移动的小队重新计算路径。
 void UVWDomainWorldSubsystem::SetNavigationObstacles(const TArray<FBox2D>& Obstacles)
 {
  NavigationObstacles = Obstacles;

@@ -1,5 +1,6 @@
 #include "VWDomainWorldSubsystem.h"
 
+// 执行工作、购买、许可、补给、捐赠、勘测、修路与建造等经济命令。
 bool UVWDomainWorldSubsystem::ExecuteEconomyCommand(const FVWCommand& Command, FString& Message)
 {
  switch (Command.Type)
@@ -71,6 +72,7 @@ bool UVWDomainWorldSubsystem::ExecuteEconomyCommand(const FVWCommand& Command, F
  Cell->Facility = Facility; Message = TEXT("Facility built using treasury funds. Roads are required for production."); return true;
 }
 
+// 结算道路连通性、矿山产出、炼钢、工厂销售与税收。
 void UVWDomainWorldSubsystem::SimulateEconomy()
 {
  if (!State.NationId.IsValid()) return;

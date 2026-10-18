@@ -9,8 +9,11 @@ struct FVWSubjectId
 {
  GENERATED_BODY()
  UPROPERTY(EditAnywhere, BlueprintReadWrite) FGuid Value;
+ // 判断主体标识是否有效。
  bool IsValid() const { return Value.IsValid(); }
+ // 生成一个新的主体标识。
  static FVWSubjectId NewId() { FVWSubjectId Id; Id.Value = FGuid::NewGuid(); return Id; }
+ // 比较两个主体标识是否相同。
  bool operator==(const FVWSubjectId& Other) const { return Value == Other.Value; }
 };
 USTRUCT(BlueprintType)
@@ -18,8 +21,11 @@ struct FVWAccountId
 {
  GENERATED_BODY()
  UPROPERTY(EditAnywhere, BlueprintReadWrite) FGuid Value;
+ // 判断账户标识是否有效。
  bool IsValid() const { return Value.IsValid(); }
+ // 生成一个新的账户标识。
  static FVWAccountId NewId() { FVWAccountId Id; Id.Value = FGuid::NewGuid(); return Id; }
+ // 比较两个账户标识是否相同。
  bool operator==(const FVWAccountId& Other) const { return Value == Other.Value; }
 };
 UENUM(BlueprintType)

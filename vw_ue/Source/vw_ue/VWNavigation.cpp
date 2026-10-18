@@ -1,6 +1,7 @@
 #include "VWNavigation.h"
 namespace
 {
+ // 判断线段 AB 是否与矩形相交（二维 slab 检测）。
  bool Crosses(const FVector& A,const FVector& B,const FBox2D& Box)
  {
   double Near=0,Far=1;
@@ -20,11 +21,13 @@ namespace
   return true;
  }
 }
+// 判断线段是否完全不穿过任何障碍物（已包含安全间距）。
 bool VWNavigation::SegmentClear(const FVector& A,const FVector& B,const TArray<FBox2D>& Obstacles)
 {
  for(const auto& Box:Obstacles) if(Crosses(A,B,Box.ExpandBy(Clearance))) return false;
  return true;
 }
+// 构建可见性图并用 Dijkstra 规划绕开障碍物的最短路径。
 bool VWNavigation::BuildPath(const FVector& Start,const FVector& Goal,const TArray<FBox2D>& Obstacles,TArray<FVector>& Path)
 {
  Path.Reset();

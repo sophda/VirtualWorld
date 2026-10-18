@@ -6,6 +6,7 @@
 #include "Engine/World.h"
 #include "InputCoreTypes.h"
 
+// 初始化游戏输入模式、鼠标状态与欢迎提示。
 void AVWPlayerController::BeginPlay()
 {
  Super::BeginPlay();
@@ -13,13 +14,15 @@ void AVWPlayerController::BeginPlay()
  SetInputMode(FInputModeGameOnly()); bShowMouseCursor = false;
  Feedback = TEXT("Welcome. J work | B buy rifle | T recruit | M map.");
 }
+// 绑定地图切换、鼠标按键与各功能快捷键。
 void AVWPlayerController::SetupInputComponent()
 {
  Super::SetupInputComponent();
  InputComponent->BindAction(TEXT("ToggleStrategicMap"), IE_Pressed, this, &AVWPlayerController::ToggleStrategicMap);
  InputComponent->BindKey(EKeys::LeftMouseButton, IE_Pressed, this, &AVWPlayerController::PrimaryPressed);
  InputComponent->BindKey(EKeys::LeftMouseButton, IE_Released, this, &AVWPlayerController::PrimaryReleased);
- InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AVWPlayerController::OrderAtCursor);
+ InputComponent->BindKey(EKeys::RightMouseButton, IE_Pressed, this, &AVWPlayerController::SecondaryPressed);
+ InputComponent->BindKey(EKeys::RightMouseButton, IE_Released, this, &AVWPlayerController::SecondaryReleased);
  InputComponent->BindKey(EKeys::J, IE_Pressed, this, &AVWPlayerController::Work);
  InputComponent->BindKey(EKeys::B, IE_Pressed, this, &AVWPlayerController::BuyRifle);
  InputComponent->BindKey(EKeys::T, IE_Pressed, this, &AVWPlayerController::Recruit);
@@ -28,6 +31,7 @@ void AVWPlayerController::SetupInputComponent()
  InputComponent->BindKey(EKeys::F5, IE_Pressed, this, &AVWPlayerController::QuickSave);
  InputComponent->BindKey(EKeys::F9, IE_Pressed, this, &AVWPlayerController::QuickLoad);
 }
+// 每帧把角色位置同步给领域状态。
 void AVWPlayerController::PlayerTick(float DeltaTime)
 {
  Super::PlayerTick(DeltaTime);
@@ -36,9 +40,11 @@ void AVWPlayerController::PlayerTick(float DeltaTime)
   if (auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>())
    Domain->SetCharacterLocation(CharacterPawn->GetActorLocation());
 }
+// 在角色与战略相机之间切换控制权、输入模式与鼠标显示。
 void AVWPlayerController::ToggleStrategicMap()
 {
  if (!GetWorld() || GetNetMode() != NM_Standalone) return;
+ if (auto* HUD = Cast<AVWHUD>(GetHUD())) HUD->CancelMapInteraction();
  if (!bStrategicMode)
  {
   CharacterPawn = GetPawn();
@@ -60,6 +66,7 @@ void AVWPlayerController::ToggleStrategicMap()
   bShowMouseCursor = false; bStrategicMode = false;
  }
 }
+// 用当前选中的格子与单位构造命令并提交执行，读档成功后同步角色位置。
 void AVWPlayerController::Submit(EVWCommandType Type)
 {
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
@@ -73,15 +80,28 @@ void AVWPlayerController::Submit(EVWCommandType Type)
   if (CharacterPawn) CharacterPawn->SetActorLocation(Domain->GetSnapshot().CharacterLocation, false, nullptr, ETeleportType::TeleportPhysics);
  }
 }
+// 处理左键按下：战略模式下交给 HUD，否则角色开枪。
 void AVWPlayerController::PrimaryPressed()
 {
  if (bStrategicMode) { if (auto* HUD = Cast<AVWHUD>(GetHUD())) HUD->PointerPressed(); }
  else if (auto* PlayerCharacter = Cast<AVWCharacter>(GetPawn())) PlayerCharacter->FireWeapon();
 }
+// 处理左键释放：结束地图平移。
 void AVWPlayerController::PrimaryReleased()
 {
  if (bStrategicMode) if (auto* HUD = Cast<AVWHUD>(GetHUD())) HUD->PointerReleased();
 }
+// 处理右键按下：开始小队框选。
+void AVWPlayerController::SecondaryPressed()
+{
+ if (bStrategicMode) if (auto* HUD = Cast<AVWHUD>(GetHUD())) HUD->SelectionPressed();
+}
+// 处理右键释放：完成框选或下达移动/攻击命令。
+void AVWPlayerController::SecondaryReleased()
+{
+ if (bStrategicMode) if (auto* HUD = Cast<AVWHUD>(GetHUD())) HUD->SelectionReleased();
+}
+// 根据鼠标位置选择攻击敌军或移动到地面，并提交相应命令。
 void AVWPlayerController::OrderAtCursor()
 {
  if (!bStrategicMode || !bMilitaryLayer) return;
@@ -97,10 +117,17 @@ void AVWPlayerController::OrderAtCursor()
   bFeedbackSuccess=Domain->ExecuteCommand(Command,Feedback);
  }
 }
+// 提交工作命令。
 void AVWPlayerController::Work() { Submit(EVWCommandType::Work); }
+// 提交购买步枪命令。
 void AVWPlayerController::BuyRifle() { Submit(EVWCommandType::BuyRifle); }
+// 提交招募小队命令。
 void AVWPlayerController::Recruit() { Submit(EVWCommandType::Recruit); }
+// 提交建立国家命令。
 void AVWPlayerController::FoundNation() { Submit(EVWCommandType::FoundNation); }
+// 提交购买补给命令。
 void AVWPlayerController::Heal() { Submit(EVWCommandType::Heal); }
+// 提交快速存档命令。
 void AVWPlayerController::QuickSave() { Submit(EVWCommandType::Save); }
+// 提交快速读档命令。
 void AVWPlayerController::QuickLoad() { Submit(EVWCommandType::Load); }

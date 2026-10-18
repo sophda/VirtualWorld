@@ -12,6 +12,7 @@
 #include "VWCombatComponent.h"
 #include "VWDomainWorldSubsystem.h"
 
+// 构造小队外观：创建五名士兵、步枪、碰撞盒、名称标签与动画资源。
 AVWSquadVisual::AVWSquadVisual()
 {
  PrimaryActorTick.bCanEverTick = true;
@@ -55,6 +56,7 @@ AVWSquadVisual::AVWSquadVisual()
  Label->SetWorldSize(24);
  Label->SetTextRenderColor(FColor(170,230,210));
 }
+// 根据存活人数更新士兵显隐、碰撞盒与名称标签内容。
 void AVWSquadVisual::UpdateSquad(const FString& Name,int32 Count,const FVector& Position,const FVector& Facing)
 {
  Destination = Position;
@@ -75,6 +77,7 @@ void AVWSquadVisual::UpdateSquad(const FString& Name,int32 Count,const FVector& 
  Label->SetTextRenderColor(bHostile?FColor(255,90,70):FColor(100,255,200));
  Label->SetText(FText::FromString(FString::Printf(TEXT("%s%s  %d/5  HP %.0f%s"),bHostile?TEXT("ENEMY "):TEXT(""),*Name,LivingSoldiers,HitPoints,AttackTarget?TEXT("  FIRING"):TEXT(""))));
 }
+// 每帧推进战斗逻辑、朝目标位置插值移动、切换走/站动画并让标签面向相机。
 void AVWSquadVisual::Tick(float DeltaSeconds)
 {
  Super::Tick(DeltaSeconds);

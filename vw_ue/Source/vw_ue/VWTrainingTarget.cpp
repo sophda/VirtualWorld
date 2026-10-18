@@ -5,6 +5,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Engine/World.h"
 #include "TimerManager.h"
+// 构造训练靶：创建碰撞盒、靶子模型与血量标签。
 AVWTrainingTarget::AVWTrainingTarget()
 {
  HitBox = CreateDefaultSubobject<UBoxComponent>(TEXT("HitBox"));
@@ -21,6 +22,7 @@ AVWTrainingTarget::AVWTrainingTarget()
  Text->SetRelativeRotation(FRotator(0,180,0)); Text->SetHorizontalAlignment(EHTA_Center);
  Text->SetWorldSize(20); Text->SetText(FText::FromString(TEXT("TARGET 100"))); Text->SetTextRenderColor(FColor::Orange);
 }
+// 扣除训练靶生命、刷新血条，击倒后登记成绩并安排重置。
 float AVWTrainingTarget::TakeDamage(float Damage, const FDamageEvent& Event, AController* DamageInstigator, AActor* Causer)
 {
  if (!HasAuthority() || Damage <= 0 || Health <= 0) return 0;
@@ -35,6 +37,7 @@ float AVWTrainingTarget::TakeDamage(float Damage, const FDamageEvent& Event, ACo
  }
  return Applied;
 }
+// 重置训练靶：恢复生命、显示与碰撞。
 void AVWTrainingTarget::ResetTarget()
 {
  Health = 100; Mesh->SetVisibility(true); HitBox->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);

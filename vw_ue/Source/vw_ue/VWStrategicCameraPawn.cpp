@@ -6,6 +6,7 @@
 #include "VWHUD.h"
 #include "GameFramework/PlayerController.h"
 
+// 构造战略相机 Pawn：创建根组件与俯视相机。
 AVWStrategicCameraPawn::AVWStrategicCameraPawn()
 {
 	PrimaryActorTick.bCanEverTick = true;
@@ -17,6 +18,7 @@ AVWStrategicCameraPawn::AVWStrategicCameraPawn()
 	SetActorRotation(FRotator(-65.f, 0.f, 0.f));
 }
 
+// 绑定战略地图的前后、左右平移与滚轮缩放输入。
 void AVWStrategicCameraPawn::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
 	Super::SetupPlayerInputComponent(PlayerInputComponent);
@@ -25,6 +27,7 @@ void AVWStrategicCameraPawn::SetupPlayerInputComponent(UInputComponent* PlayerIn
 	PlayerInputComponent->BindAxis(TEXT("MapZoom"), this, &AVWStrategicCameraPawn::Zoom);
 }
 
+// 每帧按照输入轴平移战略相机，并带碰撞检测。
 void AVWStrategicCameraPawn::Tick(const float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
@@ -32,9 +35,12 @@ void AVWStrategicCameraPawn::Tick(const float DeltaSeconds)
 	AddActorWorldOffset((YawRotation.Vector() * MoveForwardAxis + FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y) * MoveRightAxis) * 1800.f * DeltaSeconds, true);
 }
 
+// 记录前后移动输入轴的值。
 void AVWStrategicCameraPawn::MoveX(const float Value) { MoveForwardAxis = Value; }
+// 记录左右移动输入轴的值。
 void AVWStrategicCameraPawn::MoveY(const float Value) { MoveRightAxis = Value; }
 
+// 把滚轮输入转交 HUD 处理地图缩放。
 void AVWStrategicCameraPawn::Zoom(const float Value)
 {
 	if (FMath::IsNearlyZero(Value)) return;

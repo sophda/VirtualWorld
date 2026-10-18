@@ -18,6 +18,7 @@
 #include "InputCoreTypes.h"
 #include "VWCombatComponent.h"
 
+// 构造角色：初始化胶囊体、移动参数、相机与武器外观。
 AVWCharacter::AVWCharacter()
 {
  PrimaryActorTick.bCanEverTick = true;
@@ -47,6 +48,7 @@ AVWCharacter::AVWCharacter()
  WeaponVisual->SetCollisionEnabled(ECollisionEnabled::NoCollision);
  WeaponVisual->SetOnlyOwnerSee(false); WeaponVisual->SetVisibility(false);
 }
+// 每帧更新武器挂点、武器显隐、移动动画，并在角色越界时拉回安全区域。
 void AVWCharacter::Tick(float DeltaSeconds)
 {
  Super::Tick(DeltaSeconds);
@@ -96,6 +98,7 @@ void AVWCharacter::Tick(float DeltaSeconds)
   }
  }
 }
+// 绑定角色的移动、视角、跳跃、射击、交互与冲刺输入。
 void AVWCharacter::SetupPlayerInputComponent(UInputComponent* Input)
 {
  Super::SetupPlayerInputComponent(Input);
@@ -111,21 +114,29 @@ void AVWCharacter::SetupPlayerInputComponent(UInputComponent* Input)
  Input->BindKey(EKeys::LeftShift,IE_Pressed,this,&AVWCharacter::SprintStart);
  Input->BindKey(EKeys::LeftShift,IE_Released,this,&AVWCharacter::SprintStop);
 }
+// 沿控制器视线方向前后移动。
 void AVWCharacter::MoveForward(float Value)
 {
  if (Controller && !FMath::IsNearlyZero(Value))
   AddMovementInput(FRotator(0,Controller->GetControlRotation().Yaw,0).Vector(),Value);
 }
+// 沿控制器视线方向左右平移。
 void AVWCharacter::MoveRight(float Value)
 {
  if (Controller && !FMath::IsNearlyZero(Value))
   AddMovementInput(FRotationMatrix(FRotator(0,Controller->GetControlRotation().Yaw,0)).GetUnitAxis(EAxis::Y),Value);
 }
+// 左右转动视角。
 void AVWCharacter::Turn(float Value) { AddControllerYawInput(Value); }
+// 上下俯仰视角。
 void AVWCharacter::LookUp(float Value) { AddControllerPitchInput(Value); }
+// 触发跳跃。
 void AVWCharacter::JumpPressed() { Jump(); }
+// 进入冲刺状态并提高移动速度。
 void AVWCharacter::SprintStart() { GetCharacterMovement()->MaxWalkSpeed = 850; }
+// 退出冲刺状态并恢复常规速度。
 void AVWCharacter::SprintStop() { GetCharacterMovement()->MaxWalkSpeed = 520; }
+// 切换第一/第三人称视角并同步相机与角色网格的显示。
 void AVWCharacter::ToggleCameraMode()
 {
  bFirstPerson = !bFirstPerson;
@@ -133,6 +144,7 @@ void AVWCharacter::ToggleCameraMode()
  Camera->SetRelativeLocation(bFirstPerson ? FVector(0,0,64) : FVector(0,0,76));
  GetMesh()->SetOwnerNoSee(bFirstPerson);
 }
+// 发射一发子弹：消耗弹药、执行射击并显示命中反馈。
 void AVWCharacter::FireWeapon()
 {
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
@@ -145,10 +157,12 @@ void AVWCharacter::FireWeapon()
  PC->Feedback=Damage>0?TEXT("Hit confirmed."):TEXT("Shot fired / cover hit.");
  PC->bFeedbackSuccess = true;
 }
+// 为当前武器装填弹药。
 void AVWCharacter::Reload()
 {
  if (auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>()) Domain->ReloadWeapon();
 }
+// 与范围内最近的交互点互动，找不到时给出提示。
 void AVWCharacter::Interact()
 {
  auto* PC = Cast<AVWPlayerController>(Controller); if (!PC) return;
@@ -161,6 +175,7 @@ void AVWCharacter::Interact()
  if (Nearest) PC->Submit(Nearest->Action);
  else { PC->Feedback = TEXT("Move within 2.6m of a kiosk to interact."); PC->bFeedbackSuccess = false; }
 }
+// 处理角色受到的伤害：过滤友军伤害，并在死亡时传送回出生点。
 float AVWCharacter::TakeDamage(float Damage, const FDamageEvent& Event, AController* DamageInstigator, AActor* Causer)
 {
  auto* Domain = GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>();
@@ -174,6 +189,7 @@ float AVWCharacter::TakeDamage(float Damage, const FDamageEvent& Event, AControl
  if (Died) { SetActorLocation(FVector(0,0,120),false,nullptr,ETeleportType::TeleportPhysics); GetCharacterMovement()->StopMovementImmediately(); }
  return Applied;
 }
+// 根据落地冲击速度对角色造成坠落伤害。
 void AVWCharacter::Landed(const FHitResult& Hit)
 {
  const float ImpactSpeed = -GetVelocity().Z;

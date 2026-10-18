@@ -7,6 +7,7 @@
 #include "Components/TextRenderComponent.h"
 #include "Components/BoxComponent.h"
 
+// 构造时刷新标签文本、颜色与士兵显隐。
 void AVWSquadVisual::OnConstruction(const FTransform& Transform)
 {
  Super::OnConstruction(Transform);
@@ -15,6 +16,7 @@ void AVWSquadVisual::OnConstruction(const FTransform& Transform)
  Label->SetTextRenderColor(bHostile?FColor(255,90,70):FColor(100,255,200));
  for (int32 I=0;I<Soldiers.Num();++I) Soldiers[I]->SetVisibility(I<InitialSoldiers,true);
 }
+// 开始运行时设置阵营，并把敌军小队注册到领域状态。
 void AVWSquadVisual::BeginPlay()
 {
  Super::BeginPlay();
@@ -26,6 +28,7 @@ void AVWSquadVisual::BeginPlay()
    Domain->RegisterEnemySquad(SquadId,DisplayName,GetActorLocation(),InitialSoldiers);
  }
 }
+// 用领域状态配置小队的阵营、存活状态、生命值与射速。
 void AVWSquadVisual::ConfigureCombat(const FVWMilitaryUnitState& Unit)
 {
  SquadId=Unit.Id; bHostile=Unit.bHostile; DisplayName=Unit.Name;
@@ -33,11 +36,13 @@ void AVWSquadVisual::ConfigureCombat(const FVWMilitaryUnitState& Unit)
  HitPoints=Unit.HitPoints<0?Unit.Soldiers*100.f:Unit.HitPoints;
  Combat->ShotInterval=0.9f/FMath::Max(1,Unit.Soldiers);
 }
+// 返回小队队首士兵的眼睛位置与朝向。
 void AVWSquadVisual::GetActorEyesViewPoint(FVector& Location,FRotator& Rotation) const
 {
  Location=Soldiers[0]->GetComponentLocation()+FVector(0,0,110);
  Rotation=GetActorRotation();
 }
+// 把伤害转交给领域状态结算，并同步小队外观。
 float AVWSquadVisual::TakeDamage(float Damage,const FDamageEvent& Event,AController* InstigatorController,AActor* Causer)
 {
  auto* Domain=GetWorld()?GetWorld()->GetSubsystem<UVWDomainWorldSubsystem>():nullptr;
@@ -53,6 +58,7 @@ float AVWSquadVisual::TakeDamage(float Damage,const FDamageEvent& Event,AControl
  }
  return Applied;
 }
+// 小队战斗逻辑：同步状态、索敌、追击、视线检查与交替开火。
 void AVWSquadVisual::TickCombat()
 {
  if (GetNetMode()!=NM_Standalone || !SquadId.IsValid()) return;

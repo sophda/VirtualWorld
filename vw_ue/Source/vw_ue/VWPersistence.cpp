@@ -3,6 +3,7 @@
 #include "VWNavigation.h"
 #include "Kismet/GameplayStatics.h"
 
+// 全面校验快照：版本、账户、格子、单位、玩家状态与流水是否合法。
 bool UVWDomainWorldSubsystem::ValidateSnapshot(const FVWWorldSnapshot& S, FString& Error)
 {
  auto Fail = [&](const TCHAR* Why) { Error = Why; return false; };
@@ -70,6 +71,7 @@ bool UVWDomainWorldSubsystem::ValidateSnapshot(const FVWWorldSnapshot& S, FStrin
    return Fail(TEXT("Invalid financial ledger."));
  return true;
 }
+// 校验并恢复快照，同时迁移旧存档的离散坐标并重算移动路径。
 bool UVWDomainWorldSubsystem::RestoreSnapshot(const FVWWorldSnapshot& Snapshot, FString& Error)
 {
  if (!HasAuthority()) { Error = TEXT("Only standalone authority can restore a snapshot."); return false; }
@@ -87,6 +89,7 @@ bool UVWDomainWorldSubsystem::RestoreSnapshot(const FVWWorldSnapshot& Snapshot, 
  }
  LastShotTime = -1.0; return true;
 }
+// 校验当前状态后写入本地存档槽。
 bool UVWDomainWorldSubsystem::SaveSnapshot(FString& Message)
 {
  if (!ValidateSnapshot(State, Message)) return false;
@@ -96,6 +99,7 @@ bool UVWDomainWorldSubsystem::SaveSnapshot(FString& Message)
  { Message = TEXT("Save failed. Existing gameplay state retained."); return false; }
  Message = TEXT("World saved (F5). Wallet, nation, units, industry and ledger included."); return true;
 }
+// 从本地存档槽读取并恢复世界状态。
 bool UVWDomainWorldSubsystem::LoadSnapshot(FString& Message)
 {
  auto* Save = Cast<UVWWorldSave>(UGameplayStatics::LoadGameFromSlot(TEXT("VirtualWorld_Prototype"), 0));
