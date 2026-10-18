@@ -5,9 +5,17 @@
 
 ## 启动
 
-打开 `vw_ue.uproject`，默认关卡为 `/Game/Maps/ArchVisWorld`，点击 Play。
+打开 `vw_ue.uproject`，默认关卡为 `/Game/Maps/RiverValley`，点击 Play。
 这是基于工程现有 ArchVis `SampleLevel` 制作的固定关卡。建筑、树木、草地、灯光、玩家、交互点与人物训练靶均已保存在地图中，未开始 Play 时也可查看和编辑。GameMode 不再生成环境模型。
-原始 `/Game/ArchVis/SampleScene/SampleLevel` 保留供参考；旧 `/Game/Maps/Prototype` 不再作为默认地图。
+原始 `/Game/ArchVis/SampleScene/SampleLevel` 与上一版 `/Game/Maps/ArchVisWorld` 保留供参考。
+
+### 河谷地图
+
+`RiverValley` 参考航拍图的空间布局：中心城镇和桥梁、蜿蜒河道、道路连接的住宅区、成片森林，以及外围山脊。主要地形约 1 公里见方，并有更远的背景地形延伸。场景是可编辑的原型美术布局，使用现有树木和建筑素材，以及保存为静态资产的地形、河道、桥梁和住宅模型。
+
+大纲 `Valley/Terrain`、`Valley/River`、`Valley/Roads`、`Valley/Towns`、`Valley/Lighting` 分别管理对应内容。树林保存在植被实例中，可用 Foliage 模式修改。所有环境内容随关卡保存，运行时不重新生成。
+
+M 地图使用中心战术区域的真实俯视底图，继续支持滚轮缩放、己方选择和右键攻击。当前战术指令仍覆盖原型中心约 110 米范围；外围山林主要用于场景纵深，尚未扩展经济格网、部队高度寻路或游泳系统。
 建议使用至少 1000×650 的游戏视口，或全屏/新窗口运行。
 测试区域有可见碰撞边界；角色意外掉到地面下方时会自动回到出生点，避免只看到天空和黑色背景。
 当前实现为**单人原型**，远程/联机命令会被拒绝；尚未实现多玩家身份与状态复制。
@@ -16,12 +24,13 @@
 
 ### 在编辑器中修改场景
 
-1. 打开 `Content/Maps/ArchVisWorld`，无需运行游戏即可看到整个场景。
-2. 大纲 `ArchVis/OriginalScene` 中是现成建筑、树木、地面和灯光，可直接移动、旋转、缩放或替换材质。
+1. 打开 `Content/Maps/RiverValley`，无需运行游戏即可看到整个场景。
+2. 大纲 `Valley` 中是河谷地形、河流、道路、城镇和灯光；`ArchVis/OriginalScene` 保留原有中心建筑。可直接移动、旋转、缩放或替换材质。
 3. `Gameplay/Player` 放置玩家 Manny 与出生点；`Gameplay/Training` 放置三个人物训练靶；`Gameplay/Services` 放置五个服务交互点。
 4. `Content/Blueprints/BP_VWPlayer`、`BP_TrainingMannequin`、`BP_ServiceBeacon` 分别用于调整玩家、训练靶和服务点模型。服务点的 `Action` 与 `Display Label` 可在详情中设置。
 5. `Gameplay/Navigation` 中的盒体仅用于战略小队绕障，不阻挡玩家走入建筑。修改场地范围或建筑位置后同步调整对应盒体；`VWNavigationObstacle` 标签用于识别障碍。
 6. 场景改动保存关卡即可，不需要重新编译 C++。移动、射击、经济与运行时招募的小队仍由游戏逻辑驱动。
+7. `Valley/Views/Overview_RiverValley` 是全景相机，可在大纲中右键驾驶该相机查看河谷全貌。更改地貌后，小地图静态底图需要重新捕获并更新 `World/Valley/Textures/T_ValleyTactical`。
 
 ### 游戏操作
 
@@ -109,6 +118,12 @@ UE 自动化测试路径为 `VirtualWorld.Domain`：
 下一阶段宜继续完善军事建制/地区任命与战术 AI，再分离模块并接入联机身份与复制。
 
 ## Unreal MCP
+
+### RiverValley 的 VSM 阴影开销
+
+林区的 17,816 个树木实例使用 `/Game/World/Valley/Meshes/SM_ValleyOak`，启用 Nanite 和 Preserve Area（树叶面积保留），植被类型为 `/Game/Foliage/Auto_HillTree_02`。树木使用独立的材质副本，原 ArchVis 树模型保持原设置。地形、远山和城镇房屋也启用 Nanite，避免大量非 Nanite 模型占用 VSM 标记队列。保留虚拟阴影贴图和森林数量，不提高队列上限或隐藏告警。
+
+手动检查：打开树木静态网格体，在 Nanite Settings 中确认 Enable Nanite Support 和 Preserve Area；Apply Changes 后保存。植被类型的 Mesh 应指向 `SM_ValleyOak`，组件 Forced LOD Model 为 0（自动）。打开 RiverValley 后分别在高空俯视和 Play 模式检查森林及阴影，查看 Output Log 是否新增 `[VSM]` 队列溢出警告。历史日志中的旧警告仍会保留。
 
 现成 `McpAutomationBridge` 已用于检查项目、创建 Prototype 地图、关闭/重新启动前的检查、
 运行 PIE、注入试玩输入和保存运行截图。本轮未修改桥接插件源码。

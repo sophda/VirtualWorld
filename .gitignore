@@ -44,5 +44,7 @@ guide.md
 virtual world.md
 *.uasset
 !vw_ue/Content/Blueprints/*.uasset
+!vw_ue/Content/World/**/*.uasset
+!vw_ue/Content/Foliage/*.uasset
 # Keep project source assets and settings tracked:
 # Config/, Content/, Source/, Plugins/, *.uproject

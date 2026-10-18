@@ -2,11 +2,13 @@
 #include "CoreMinimal.h"
 #include "GameFramework/HUD.h"
 #include "VWHUD.generated.h"
+class UTexture2D;
 UCLASS()
 class VW_UE_API AVWHUD : public AHUD
 {
  GENERATED_BODY()
 public:
+ AVWHUD();
  virtual void DrawHUD() override;
  void PointerPressed();
  void PointerReleased();
@@ -14,7 +16,9 @@ public:
  bool WorldAt(FVector2D Point,FVector& Position) const;
  void ZoomMap(float Amount);
  FGuid EnemyAt(FVector2D Point) const;
+ UPROPERTY(EditDefaultsOnly,Category="Map") TSoftObjectPtr<UTexture2D> TerrainTexture;
 private:
+ UPROPERTY(Transient) TObjectPtr<UTexture2D> LoadedTerrainTexture;
  struct FButton { FBox2D Bounds; int32 Action; };
  TArray<FButton> Buttons;
  FVector2D MapOrigin = FVector2D::ZeroVector;

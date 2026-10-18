@@ -3,6 +3,12 @@
 #include "VWDomainWorldSubsystem.h"
 #include "Engine/Canvas.h"
 #include "Engine/World.h"
+#include "Engine/Texture2D.h"
+
+AVWHUD::AVWHUD()
+{
+ TerrainTexture=TSoftObjectPtr<UTexture2D>(FSoftObjectPath(TEXT("/Game/World/Valley/Textures/T_ValleyTactical.T_ValleyTactical")));
+}
 
 namespace
 {
@@ -139,21 +145,29 @@ void AVWHUD::DrawHUD()
  MapOrigin = MapBounds.GetCenter()-MapFocus*CellSize;
  const float MapWidth=CellSize*11;
  MapRect(FLinearColor(0.08f,0.15f,0.13f),MapOrigin.X,MapOrigin.Y,MapWidth,MapWidth);
+ if (GetWorld()->GetMapName().Contains(TEXT("RiverValley")))
+ {
+  if (!LoadedTerrainTexture) LoadedTerrainTexture=TerrainTexture.LoadSynchronous();
+  if (LoadedTerrainTexture)
+   DrawTexture(LoadedTerrainTexture,MapBounds.Min.X,MapBounds.Min.Y,MapBounds.GetSize().X,MapBounds.GetSize().Y,
+    (MapBounds.Min.X-MapOrigin.X)/MapWidth,1.f-(MapBounds.Min.Y-MapOrigin.Y)/MapWidth,
+    MapBounds.GetSize().X/MapWidth,-MapBounds.GetSize().Y/MapWidth,FLinearColor::White,BLEND_Opaque);
+ }
  // Continuous terrain presentation: no tile outlines or snapped unit markers.
  if (PC->bTerritoryLayer)
  for (const auto& Pair:S.Cells)
  {
   const auto& C=Pair.Value;
   if (Domain->OwnsCell(C))
-   Disc(CellCenter(C.Coordinate),CellSize*0.64f,FLinearColor(0.09f,0.22f,0.18f));
+   Disc(CellCenter(C.Coordinate),CellSize*0.64f,FLinearColor(0.09f,0.22f,0.18f,0.22f));
   else if (C.Defenders>0)
-   Disc(CellCenter(C.Coordinate),CellSize*0.65f,FLinearColor(0.28f,0.13f,0.12f));
+   Disc(CellCenter(C.Coordinate),CellSize*0.65f,FLinearColor(0.28f,0.13f,0.12f,0.22f));
  }
  for (const auto& Box:Domain->GetNavigationObstacles())
  {
   const FVector2D A=MapPoint(FVector(Box.Min.X,Box.Max.Y,0));
   const FVector2D B=MapPoint(FVector(Box.Max.X,Box.Min.Y,0));
-  MapRect(FLinearColor(0.30f,0.34f,0.33f),A.X,A.Y,B.X-A.X,B.Y-A.Y);
+  if (!LoadedTerrainTexture) MapRect(FLinearColor(0.30f,0.34f,0.33f),A.X,A.Y,B.X-A.X,B.Y-A.Y);
  }
  for (const auto& Pair:S.Cells)
  {
@@ -287,6 +301,6 @@ void AVWHUD::Disc(FVector2D Center,float Radius,FLinearColor Color)
  for(float Y=FMath::Max(-Radius,MapBounds.Min.Y-Center.Y);Y<=FMath::Min(Radius,MapBounds.Max.Y-Center.Y);Y+=1.f)
  {
   const float X=FMath::Sqrt(FMath::Max(0.f,Radius*Radius-Y*Y));
-  MapLine(Center.X-X,Center.Y+Y,Center.X+X,Center.Y+Y,Color,1.2f);
+  MapRect(Color,Center.X-X,Center.Y+Y,X*2.f,1.2f);
  }
 }
